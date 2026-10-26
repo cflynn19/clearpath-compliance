@@ -38,6 +38,10 @@ Confidence: H / M / L. Anything marked **(verify)** I still need to check before
 |---|---|---|---|---|
 | A13 | Text only: ad copy, emails, landing page text, social posts, affiliate pages. No images or video. | Fits in 24h; most rule triggers are in the text | | Add OCR / image review |
 | A14 | US market, English | National US lender | | |
+| A18 | Mortgage prequalification ads count as ads for credit secured by a dwelling, so the Reg Z mortgage rules (1026.24(f), (i)) apply to them | They advertise mortgage credit even though prequal comes before the application | | Scope the mortgage-only rules down |
+| A19 | ClearPath offers no government-backed loans (FHA, VA) | Not mentioned in the brief | | Allow government-program language for those products |
+| A20 | ClearPath doesn't offer loans above the home's value | Not mentioned in the brief | | Add the 1026.24(h) tax-deductibility rule |
+| A21 | ClearPath is responsible for what affiliates publish on its behalf | FTC CAN-SPAM guide: "you can't contract away your legal responsibility to comply" | | Less weight on affiliate content |
 
 ## The demo itself
 

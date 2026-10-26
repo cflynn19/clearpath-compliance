@@ -42,22 +42,55 @@ stored against the version.
 **Entities (shape TBD):** Asset, AssetVersion, Rule, Flag, FlagResolution, Decision,
 AuditEvent
 
-## Starter rules (verify each one before relying on it)
+## v1 rules
+
+Sources: Reg Z §1026.24 (closed-end credit ads) and the FTC's CAN-SPAM compliance guide.
+Illustrative, not legal advice.
 
 **Code (check failed)**
-- Rate or payment terms mentioned without an APR disclosure (Reg Z / TILA advertising)
-- Mortgage content without an NMLS ID
-- Email without an unsubscribe mechanism or physical address (CAN-SPAM)
-- Banned or high-risk phrases: "guaranteed approval", "risk-free", ...
-- Required product disclaimer missing
+
+| Rule | Cite | Applies to | Fires when |
+|---|---|---|---|
+| Rate not stated as APR | Reg Z 1026.24(c) | Personal loan, mortgage | A rate appears with no "APR" / "annual percentage rate" next to it |
+| Trigger term without full disclosure | Reg Z 1026.24(d) | Personal loan, mortgage | Payment amount, number of payments or term, down payment, or finance charge appears, but the APR or repayment terms are missing |
+| Mortgage payment without taxes-and-insurance note | Reg Z 1026.24(f)(3)(i)(C) | Mortgage | A payment amount, with no note that it excludes taxes and insurance |
+| "Counselor" | Reg Z 1026.24(i)(6) | Mortgage | The word appears |
+| Government endorsement | Reg Z 1026.24(i)(3) | Mortgage | "government loan program", "government-backed", ... |
+| "Fixed" before "ARM" | Reg Z 1026.24(i)(1) | Mortgage | "fixed" and ARM / adjustable / variable both appear, and "ARM" doesn't come first |
+| No physical address | CAN-SPAM | Email | No street address / PO Box pattern |
+| No opt-out | CAN-SPAM | Email | No "unsubscribe" / "opt out" / preferences link |
 
 **LLM (needs judgment)**
-- Misleading speed or approval claims ("approved in minutes")
-- Implied guarantees ("everyone qualifies")
-- Unsupported comparisons ("lowest rates anywhere")
-- Urgency or pressure tactics
-- Disclosure present but buried, or contradicted by the headline
-- Injection-like text in the asset
+
+| Rule | Cite | Applies to |
+|---|---|---|
+| Another rate more prominent than the APR; rate may increase but ad doesn't say so | Reg Z 1026.24(c) | Personal loan, mortgage |
+| Misleading payment or rate comparisons | Reg Z 1026.24(i)(2) | Mortgage |
+| "Eliminate your debt" claims | Reg Z 1026.24(i)(5) | Mortgage |
+| Uses the reader's current lender's name | Reg Z 1026.24(i)(4) | Mortgage |
+| Deceptive subject line | CAN-SPAM | Email |
+| Not identified as an ad | CAN-SPAM | Email |
+| Opt-out unclear, or asks for more than an email / one page | CAN-SPAM | Email |
+| Injection-like text in the asset | (security) | All |
+
+**Known gap:** credit card ads fall under Reg Z §1026.16 (open-end credit), not §1026.24.
+Card-specific rules (e.g. "0% intro APR" needing "introductory", the duration, and the
+rate afterwards) are next; until then, cards get only the channel rules.
+
+**Deliberately out of scope**
+
+| Rule | Why |
+|---|---|
+| 1026.24(a) Terms actually available | Needs ClearPath's live rate sheet. Next step: compare advertised rates to it. |
+| 1026.24(b), (f) "Clear and conspicuous", equal prominence | Visual; text-only (A13) |
+| 1026.24(g) TV / radio | No such channels |
+| 1026.24(h) Loans above home value | Not a ClearPath product (A20) |
+| 1026.24(i)(7) Foreign-language ads | English only (A14) |
+| CAN-SPAM header info, honouring opt-outs | Sending infrastructure and processes, not content |
+
+Note: 1026.24(e) allows an online ad to meet the disclosure requirements through a clearly
+linked rates table. That is the basis for the "requirement met elsewhere" dismissal
+reason (D6).
 
 ## Mock data
 
