@@ -114,6 +114,31 @@ days later shouldn't wait through a cold start.
 No auth (A17), so anyone can change the seeded data. A reset button re-seeds it, so one
 grader's clicks don't break the demo for the next.
 
+### D15. Rule engine
+- **One flag per rule per asset, pointing at every occurrence.** Three "counselor"s are
+  one issue to fix, not three flags to resolve, but the reviewer sees all three
+  highlighted.
+- **Every percentage is treated as a rate** unless it's clearly something else ("95% of
+  borrowers", "10% down"). Overflagging, per D3.
+- **The APR has to be readable at a glance with the rate:** within ~40 characters and in
+  the same sentence. An APR in a footnote or another section doesn't count.
+- **Any down payment statement is a trigger term, including "no down payment"** (Reg Z
+  1026.24(d)(1)(i)). The down payment *disclosure* is only required for mortgages: Reg Z
+  says "as applicable", and personal loans have no down payment.
+- **Physical address = a street address or PO Box.** City, state and ZIP alone don't
+  count.
+- **LLM quotes must match the asset's text,** ignoring only case and spacing. Rewording
+  fails. The stored quote is the asset's own text, never the model's copy of it.
+
+**Known limits, to revisit:**
+- "over 20 years of experience" reads as a repayment term (a known false positive,
+  documented in the tests).
+- Ads offering both fixed and adjustable mortgages get the "fixed before ARM" flag even
+  though order doesn't matter for them (1026.24(i)(1)(iii)). The reviewer dismisses
+  these; the LLM could separate the two cases.
+- The "is this percentage a rate?" test is a word list, and could be smarter.
+- The taxes-and-insurance rule assumes every mortgage is first-lien (A22).
+
 ## Not in v1, and why
 
 | Cut | Why |
