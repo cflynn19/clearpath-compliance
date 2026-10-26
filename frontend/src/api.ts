@@ -72,6 +72,96 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json()
 }
 
+export type AssetStatus = 'in_review' | 'approved' | 'rejected'
+export type FlagStatus = 'open' | 'dismissed' | 'acknowledged'
+
+export const STATUS_LABEL: Record<AssetStatus, string> = {
+  in_review: 'In review',
+  approved: 'Approved',
+  rejected: 'Rejected',
+}
+
+export interface StoredFlag extends Flag {
+  id: number
+  status: FlagStatus
+  reason: string | null
+  note: string | null
+  resolved_by: string | null
+  resolved_at: string | null
+}
+
+export interface ReviewEvent {
+  id: number
+  actor: string
+  action: string
+  detail: Record<string, unknown>
+  created_at: string
+}
+
+export interface AssetSummary {
+  id: number
+  title: string
+  submitter: string
+  product: Product
+  channel: Channel
+  status: AssetStatus
+  created_at: string
+  decided_at: string | null
+  open_failed: number
+  open_judgment: number
+  total: number
+}
+
+export interface AssetDetail extends Omit<AssetSummary, 'open_failed' | 'open_judgment' | 'total'> {
+  decided_by: string | null
+  decision_note: string | null
+  version: { number: number; subject: string | null; body: string; ai: AiStatus; created_at: string }
+  flags: StoredFlag[]
+  events: ReviewEvent[]
+}
+
+export interface NewAsset extends Asset {
+  title?: string
+  submitter?: string
+}
+
+export interface Rule {
+  id: string
+  name: string
+  type: FlagType
+  citation: string
+  description: string
+  products: Product[]
+  channels: Channel[]
+  enabled: boolean
+  source: string
+  stats: { flagged: number; dismissed: number; reasons: Record<string, number> }
+}
+
+export interface ReviewConfig {
+  actor: string
+  dismiss_reasons: Record<string, string>
+}
+
+const post = (body?: unknown): RequestInit => ({
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: body === undefined ? undefined : JSON.stringify(body),
+})
+
+export const listAssets = () => request<AssetSummary[]>('/api/assets')
+export const getAsset = (id: number) => request<AssetDetail>(`/api/assets/${id}`)
+export const createAsset = (asset: NewAsset) => request<AssetDetail>('/api/assets', post(asset))
+export const dismissFlag = (id: number, reason: string, note: string) =>
+  request<AssetDetail>(`/api/flags/${id}/dismiss`, post({ reason, note }))
+export const acknowledgeFlag = (id: number) => request<AssetDetail>(`/api/flags/${id}/acknowledge`, post())
+export const reopenFlag = (id: number) => request<AssetDetail>(`/api/flags/${id}/reopen`, post())
+export const decide = (id: number, decision: 'approve' | 'reject', note: string) =>
+  request<AssetDetail>(`/api/assets/${id}/decision`, post({ decision, note }))
+export const getRules = () => request<Rule[]>('/api/rules')
+export const getReviewConfig = () => request<ReviewConfig>('/api/review-config')
+export const resetDemo = () => request<{ seeded: number }>('/api/demo/reset', post())
+
 export function analyze(asset: Asset): Promise<AnalyzeResult> {
   return request('/api/analyze', {
     method: 'POST',

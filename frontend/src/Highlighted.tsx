@@ -2,17 +2,20 @@ import type { Flag, FlagType, Span } from './api'
 import { countHidden, stripHidden } from './hidden'
 
 
+type HighlightFlag = Flag & { status?: string }
+
 interface Mark {
   start: number
   end: number
   flagIndex: number
   type: FlagType
+  resolved: boolean
 }
 
 interface Segment {
   text: string
   flags: number[]
-  types: Set<FlagType>
+  types: Set<FlagType> // of the open flags only; resolved ones fade
 }
 
 // Split the text at every highlight boundary, so overlapping highlights from different
@@ -31,7 +34,7 @@ function segment(text: string, marks: Mark[]): Segment[] {
     segments.push({
       text: text.slice(a, b),
       flags: [...new Set(covering.map((m) => m.flagIndex))],
-      types: new Set(covering.map((m) => m.type)),
+      types: new Set(covering.filter((m) => !m.resolved).map((m) => m.type)),
     })
   }
   return segments
@@ -58,14 +61,20 @@ export function Highlighted({
 }: {
   text: string
   field: Span['field']
-  flags: Flag[]
+  flags: HighlightFlag[]
   active: number | null
   onSelect: (flagIndex: number) => void
 }) {
   const marks: Mark[] = flags.flatMap((flag, flagIndex) =>
     flag.spans
       .filter((s) => s.field === field)
-      .map((s) => ({ start: s.start, end: s.end, flagIndex, type: flag.type })),
+      .map((s) => ({
+        start: s.start,
+        end: s.end,
+        flagIndex,
+        type: flag.type,
+        resolved: flag.status !== undefined && flag.status !== 'open',
+      })),
   )
 
   return (
@@ -73,6 +82,7 @@ export function Highlighted({
       {segment(text, marks).map((seg, i) => {
         if (!seg.flags.length) return <span key={i}>{seg.text}</span>
         const classes = ['hl', ...[...seg.types].map((t) => `hl-${t}`)]
+        if (!seg.types.size) classes.push('hl-resolved')
         if (active !== null && seg.flags.includes(active)) classes.push('hl-active')
         return (
           <mark

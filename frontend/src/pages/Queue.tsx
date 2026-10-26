@@ -1,0 +1,98 @@
+import { useState } from 'react'
+import { CHANNELS, PRODUCTS, STATUS_LABEL } from '../api'
+import type { AssetStatus, AssetSummary } from '../api'
+import { timeAgo } from '../format'
+import { href } from '../router'
+
+const FILTERS: { key: AssetStatus | 'all'; label: string }[] = [
+  { key: 'in_review', label: 'In review' },
+  { key: 'approved', label: 'Approved' },
+  { key: 'rejected', label: 'Rejected' },
+  { key: 'all', label: 'All' },
+]
+
+function FlagSummary({ a }: { a: AssetSummary }) {
+  if (a.status !== 'in_review') return null
+  if (!a.open_failed && !a.open_judgment) {
+    return <span className="pill ok">{a.total ? 'All flags resolved' : 'No flags'}</span>
+  }
+  return (
+    <>
+      {a.open_failed > 0 && <span className="pill fail">{a.open_failed} failed</span>}
+      {a.open_judgment > 0 && <span className="pill judge">{a.open_judgment} to judge</span>}
+    </>
+  )
+}
+
+export function Queue({ assets }: { assets: AssetSummary[] | null }) {
+  const [filter, setFilter] = useState<AssetStatus | 'all'>('in_review')
+
+  if (assets === null) return <p className="muted">Loading the queue…</p>
+
+  const shown = assets.filter((a) => filter === 'all' || a.status === filter)
+  const count = (key: AssetStatus | 'all') => assets.filter((a) => key === 'all' || a.status === key).length
+
+  return (
+    <>
+      <div className="page-head">
+        <div>
+          <h1>Review queue</h1>
+          <p className="muted">
+            Marketing waiting for compliance review. Every ad arrives already checked: open one to resolve its flags and
+            make the call.
+          </p>
+        </div>
+        <a className="btn primary" href={href.new}>
+          New check
+        </a>
+      </div>
+
+      <div className="tabs">
+        {FILTERS.map((f) => (
+          <button key={f.key} className={filter === f.key ? 'on' : ''} onClick={() => setFilter(f.key)}>
+            {f.label} <span>{count(f.key)}</span>
+          </button>
+        ))}
+      </div>
+
+      {shown.length === 0 ? (
+        <div className="card empty-state">
+          {assets.length === 0 ? (
+            <>
+              <strong>The demo queue is loading.</strong>
+              <p className="muted">
+                The first start checks every sample ad with AI, which takes about a minute. Refresh shortly, or use
+                Reset demo.
+              </p>
+            </>
+          ) : (
+            <p className="muted">Nothing here.</p>
+          )}
+        </div>
+      ) : (
+        <ul className="queue">
+          {shown.map((a) => (
+            <li key={a.id}>
+              <a className="card queue-item" href={href.review(a.id)}>
+                <div className="queue-main">
+                  <strong>{a.title}</strong>
+                  <div className="meta">
+                    <span className="tag">{PRODUCTS[a.product]}</span>
+                    <span className="tag">{CHANNELS[a.channel]}</span>
+                    <span className="muted">
+                      {a.submitter} · {timeAgo(a.created_at)}
+                    </span>
+                  </div>
+                </div>
+                <div className="queue-side">
+                  <FlagSummary a={a} />
+                  <span className={`state state-${a.status}`}>{STATUS_LABEL[a.status]}</span>
+                </div>
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  )
+}
