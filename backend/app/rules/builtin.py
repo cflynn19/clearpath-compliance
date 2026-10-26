@@ -245,30 +245,47 @@ def opt_out(asset: Asset) -> list[Finding]:
 
 # The LLM has its own injection rule, but text that hijacks the model could also
 # suppress that rule. A regex can't be talked out of matching, so this is the backstop.
-# DECISION(Q14): code rules are "check failed", so this is too: the text being there is
-# a fact, even though whether it's malicious is a judgment.
+# Q14: "check failed" like every code rule (the text being there is a fact). The
+# patterns only cover text aimed at a reviewer or model, never AI as a product feature
+# ("our AI assistant compares offers"), so the backstop doesn't flood reviewers. The
+# LLM's injection rule casts the wider net for subtle or indirect attempts.
 INJECTION = re.compile(
-    r"\b(?:ignore|disregard|forget)\s(?:all\s|any\s|the\s)?(?:previous|prior|above|earlier|system)\s"
-    r"(?:instructions|rules|prompts?|guidelines)"
-    r"|\b(?:mark|classify|report|flag|treat)\s(?:this|the)\s(?:ad|asset|content|email|page|post|copy)\s"
-    r"as\s(?:compliant|approved|safe|clean)"
-    r"|\bno\s(?:compliance\s)?(?:issues|violations)\s(?:were\s)?(?:found|here|present)"
+    r"\b(?:ignore|disregard|forget|override)\s(?:all\s|any\s|the\s|your\s)?"
+    r"(?:previous|prior|above|earlier|system|original)\s(?:instructions|rules|prompts?|guidelines)"
+    r"|\bnew\s(?:system\s)?instructions\s?:"
     r"|\bsystem\sprompt\b"
-    r"|\b(?:as|you\sare|you're)\san?\s(?:AI|LLM|language\smodel|assistant|automated\sreviewer)\b"
-    r"|\bAI\s(?:reviewer|model|system|assistant)s?\b",
+    r"|\b(?:mark|classify|report|flag|treat|label)\s(?:this|the)\s"
+    r"(?:ad|asset|content|email|page|post|copy|message)\s(?:as\s)?(?:compliant|approved|safe|clean)"
+    r"|\b(?:report|return|output|find|flag)\s(?:no|zero)\s(?:compliance\s)?"
+    r"(?:issues|violations|flags|findings|problems)"
+    r"|\bno\s(?:compliance\s)?(?:issues|violations)\s(?:were\s)?(?:found|here|present)"
+    r"|\b(?:do\snot|don't|dont)\s(?:flag|report|review|check)\s(?:this|the|anything)"
+    r"|\b(?:as|you\sare|you're)\san?\s(?:AI|LLM|language\smodel|automated\sreviewer)\b(?!-)"
+    r"|\b(?:AI|LLM|automated|bot)\s(?:reviewers?|moderators?|checkers?|compliance\s(?:checker|tool|bot))\b"
+    r"|\bnote\sto\s(?:the\s|any\s)?(?:AI|LLM|model|bot|reviewer)\b"
+    r"|\b(?:dear|hey|attention)\s(?:AI|LLM|model|bot)\b",
     re.I,
 )
+# Zero-width, bidirectional-override and Unicode "tag" characters: invisible to a human
+# reader, but a model still reads them, which makes them a way to hide instructions.
+HIDDEN = re.compile("[​-‏‪-‮⁠-⁤⁦-⁩﻿\U000e0000-\U000e007f]+")
 
 
 def injection(asset: Asset) -> list[Finding]:
-    spans = _spans(INJECTION.finditer(asset.body))
-    if not spans:
+    text_spans = _spans(INJECTION.finditer(asset.body))
+    hidden_spans = _spans(HIDDEN.finditer(asset.body))
+    if not (text_spans or hidden_spans):
         return []
+    why = []
+    if text_spans:
+        why.append(f"Contains text aimed at an automated reviewer ({_quoted(text_spans)}).")
+    if hidden_spans:
+        why.append(f"Contains invisible characters in {len(hidden_spans)} place(s), which can hide text from a human reader.")
+    why.append("It may be an attempt to manipulate AI review; check this asset by hand.")
     return [
         Finding(
-            why=f"Contains text that addresses an automated reviewer ({_quoted(spans)}). "
-            "It may be an attempt to manipulate AI review; check this asset by hand.",
-            spans=spans,
+            why=" ".join(why),
+            spans=tuple(sorted(text_spans + hidden_spans, key=lambda s: s.start)),
         )
     ]
 

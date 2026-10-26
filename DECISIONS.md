@@ -148,7 +148,15 @@ grader's clicks don't break the demo for the next.
 - **Untrusted content is fenced** inside a randomly named tag it can't close, and the
   prompt tells the model to report embedded instructions, not follow them. A code rule
   catches the obvious injection phrases too, because text that hijacks the model could
-  also suppress the model's own injection flag (D12).
+  also suppress the model's own injection flag (D12). It also catches invisible
+  characters (zero-width, Unicode "tag" characters), which can hide instructions from a
+  human reader but not from a model. The code patterns only target text aimed at a
+  reviewer, never AI as a product feature ("our AI assistant compares offers"), so it
+  doesn't flood reviewers; the LLM rule covers subtler attempts. Tests guard both sides:
+  attacks it must catch and normal copy it must not flag.
+- **A UDAAP rule for misleading claims** ("guaranteed approval", "everyone qualifies",
+  false urgency) joins the judgment rules. It wasn't in the first rule table, but it's the
+  most common marketing-compliance problem.
 - **Limits are visible:** "8 of 10 AI checks left this hour". When they run out, the
   code checks still run and the UI says so.
 - **No "re-run" on unchanged text.** The same text returns the stored result, free and
@@ -180,6 +188,7 @@ point at the same text into one.
 | Per-reviewer dismissal stats | Can feel like surveillance to the team you need to win over |
 | Editable dismissal reasons, per-type reason lists | A fixed list is enough to learn from |
 | Per-visitor sandbox | The reset button is enough for a demo |
+| Database migrations (Alembic) | Tables are created at startup; fine while the schema is small and demo data is re-seeded |
 
 ## Tradeoffs
 
