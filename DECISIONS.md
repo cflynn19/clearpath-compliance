@@ -104,6 +104,12 @@ the risk; it doesn't eliminate it.
 React + FastAPI + Postgres, deployed as one service (FastAPI serves the built React app)
 with a managed Postgres. One thing to deploy means fewer ways for the deploy to fail.
 
+Hosted on Render. First choice was Railway (builds from the Dockerfile, doesn't sleep
+idle apps), but its sign-ups were disabled. Render builds the same Dockerfile, and the
+database is reachable only over Render's private network. The free instance sleeps when
+idle, so it moves to a paid Starter instance before submission: a grader opening the link
+days later shouldn't wait through a cold start.
+
 ### D14. Demo reset
 No auth (A17), so anyone can change the seeded data. A reset button re-seeds it, so one
 grader's clicks don't break the demo for the next.
@@ -136,7 +142,7 @@ grader's clicks don't break the demo for the next.
 - [ ] **Throughput claim:** what I claim and how I support it
 - [ ] Evaluation results on the labelled mock data
 - [ ] Which LLM model, and why
-- [ ] Hosting choice (free-tier sleep and database expiry?)
+- [ ] Upgrade Render to Starter (no idle sleep); confirm the free database outlasts the review window
 
 ## How I used AI
 
