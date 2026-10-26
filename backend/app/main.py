@@ -1,4 +1,5 @@
 import hashlib
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -60,6 +61,7 @@ def analyze(asset: Asset, request: Request) -> analysis.AnalyzeResult:
 
 
 class Limits(BaseModel):
+    ai_enabled: bool
     remaining_this_hour: int
     limit_per_hour: int
 
@@ -67,6 +69,7 @@ class Limits(BaseModel):
 @app.get("/api/limits")
 def limits(request: Request) -> Limits:
     return Limits(
+        ai_enabled=bool(os.environ.get("ANTHROPIC_API_KEY")),
         remaining_this_hour=store.remaining(visitor_id(request)),
         limit_per_hour=store.PER_VISITOR_PER_HOUR,
     )

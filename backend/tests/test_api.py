@@ -32,6 +32,7 @@ def test_limits_count_down_per_client_address(fake_model):
     alice, bob = {"x-forwarded-for": "203.0.113.1"}, {"x-forwarded-for": "203.0.113.2"}
     client.post("/api/analyze", json=AD, headers=alice)
     assert client.get("/api/limits", headers=alice).json() == {
+        "ai_enabled": True,
         "remaining_this_hour": store.PER_VISITOR_PER_HOUR - 1,
         "limit_per_hour": store.PER_VISITOR_PER_HOUR,
     }

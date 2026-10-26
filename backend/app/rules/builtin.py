@@ -268,7 +268,7 @@ INJECTION = re.compile(
 )
 # Zero-width, bidirectional-override and Unicode "tag" characters: invisible to a human
 # reader, but a model still reads them, which makes them a way to hide instructions.
-HIDDEN = re.compile("[​-‏‪-‮⁠-⁤⁦-⁩﻿\U000e0000-\U000e007f]+")
+HIDDEN = re.compile("[\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff\U000e0000-\U000e007f]+")
 
 
 def injection(asset: Asset) -> list[Finding]:
