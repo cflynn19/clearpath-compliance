@@ -271,6 +271,16 @@ INJECTION = re.compile(
 HIDDEN = re.compile("[\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff\U000e0000-\U000e007f]+")
 
 
+def reveal_hidden(text: str) -> str:
+    """Decode Unicode tag characters into the text they spell out.
+
+    Tag characters U+E0020-U+E007E mirror printable ASCII one-to-one, so hidden text
+    written with them can be read back exactly. Other invisible characters (zero-width
+    spaces and the like) carry no text and are dropped.
+    """
+    return "".join(chr(ord(c) - 0xE0000) for c in text if 0xE0020 <= ord(c) <= 0xE007E)
+
+
 def injection(asset: Asset) -> list[Finding]:
     text_spans = _spans(INJECTION.finditer(asset.body))
     hidden_spans = _spans(HIDDEN.finditer(asset.body))
@@ -281,6 +291,9 @@ def injection(asset: Asset) -> list[Finding]:
         why.append(f"Contains text aimed at an automated reviewer ({_quoted(text_spans)}).")
     if hidden_spans:
         why.append(f"Contains invisible characters in {len(hidden_spans)} place(s), which can hide text from a human reader.")
+        decoded = " ".join(t for t in (reveal_hidden(s.quote).strip() for s in hidden_spans) if t)
+        if decoded:
+            why.append(f'The hidden text reads: "{decoded}"')
     why.append("It may be an attempt to manipulate AI review; check this asset by hand.")
     return [
         Finding(
