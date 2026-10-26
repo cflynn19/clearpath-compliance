@@ -161,6 +161,12 @@ grader's clicks don't break the demo for the next.
 - **If the model declines** (a safety classifier), the request falls back to Anthropic's
   recommended fallback model instead of failing.
 
+**Follow-up:** code and LLM checks can flag the same problem twice. In testing, an ad
+with "5.99%" and no APR got both the code flag (rate not stated as APR) and the LLM flag
+(rate shown more prominently than the APR). For now the LLM rule's wording is narrowed to
+ads that do state an APR. The general fix is to merge a code flag and an LLM flag that
+point at the same text into one.
+
 ## Not in v1, and why
 
 | Cut | Why |

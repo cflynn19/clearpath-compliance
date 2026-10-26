@@ -13,9 +13,11 @@ JUDGMENT_RULES: list[JudgmentRule] = [
         id="llm-regz-24c-rate-presentation",
         name="Rate shown more prominently than the APR",
         citation="Reg Z 12 CFR 1026.24(c)",
-        instruction="Another rate (such as a simple interest rate or a periodic rate) is shown "
-        "more prominently than the APR, or the rate can increase after the loan starts and the "
-        "ad doesn't say so.",
+        # Only when an APR is stated: a rate with no APR at all is the code rule
+        # regz-24c-rate-as-apr, and flagging it twice is noise.
+        instruction="Only applies if the ad states an APR. Another rate (such as a simple "
+        "interest rate or a periodic rate) is shown more prominently than the APR, or the rate "
+        "can increase after the loan starts and the ad doesn't say so.",
         products=CLOSED_END,
     ),
     JudgmentRule(
