@@ -35,6 +35,10 @@ python3.12 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 .venv/bin/uvicorn app.main:app --reload
 
+# Tests
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/pytest
+
 # UI on :5173 (forwards /api to :8000), in a second terminal
 cd frontend
 npm install
