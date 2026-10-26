@@ -171,9 +171,9 @@ grader's clicks don't break the demo for the next.
 
 **Follow-up:** code and LLM checks can flag the same problem twice. In testing, an ad
 with "5.99%" and no APR got both the code flag (rate not stated as APR) and the LLM flag
-(rate shown more prominently than the APR). For now the LLM rule's wording is narrowed to
-ads that do state an APR. The general fix is to merge a code flag and an LLM flag that
-point at the same text into one.
+(rate shown more prominently than the APR). Narrowing the LLM rule's wording didn't hold
+(see D18), so that rule is now off. The general fix is to merge a code flag and an LLM
+flag that point at the same text into one.
 
 ### D17. Review workflow
 - **Every check creates a queue item.** Pasting an ad in "New check" stores it like any
@@ -195,6 +195,29 @@ point at the same text into one.
 - **The Rules page shows how often each rule fires and how often it's dismissed** (D7),
   so a rule reviewers keep overriding is easy to spot.
 
+### D18. Evaluation
+`backend/eval/` scores the checks against 15 hand-labelled ads: the 8 demo-queue ads,
+traps that look risky but are fine, problems phrased to slip past obvious patterns, and a
+known false positive. Each rule is labelled expected, acceptable either way, or wrong to
+fire. Results are in `backend/eval/RESULTS.md`.
+
+What the first run showed:
+- **Code checks:** caught every expected flag, with one false flag (the known "over 20
+  years" one, kept in the set so it stays visible). Caveat: the code rules and these labels
+  were written together, so a clean score is expected, not independent proof.
+- **AI checks:** caught every expected flag, with 4 false flags. Two came from one rule,
+  "rate shown more prominently than the APR". Prominence is visual and can't be judged from
+  text (A13), the same reason Reg Z's "clear and conspicuous" rules are out of scope, so
+  that rule is **off in v1**.
+- **The AI is not consistent from run to run.** It caught the injection hidden in invisible
+  characters in the evaluation, but missed the same ad on the live site. The code backstop
+  caught it both times. This is the case for keeping a deterministic layer and for storing
+  the result a reviewer acted on (D9).
+- **One label changed, with a reason:** "95% of borrowers recommend us" was labelled clean,
+  but the AI flagged it as a claim needing substantiation. That's a fair point, so it's now
+  "acceptable either way". Labels only change for a reason like this, never to raise the
+  score.
+
 ## Not in v1, and why
 
 | Cut | Why |
@@ -209,6 +232,8 @@ point at the same text into one.
 | Editable dismissal reasons, per-type reason lists | A fixed list is enough to learn from |
 | Per-visitor sandbox | The reset button is enough for a demo |
 | Database migrations (Alembic) | Tables are created at startup; fine while the schema is small and demo data is re-seeded |
+| Stronger injection hardening: the model returns a verdict for every rule (so suppressing a flag means lying about a specific rule, not quietly omitting it), or runs twice and combines results | Costs more per check; the code backstop covers the obvious cases for v1 |
+| Merging a code flag and an LLM flag that point at the same text | The overlapping rule is off for now; the general fix needs flag-matching logic |
 
 ## Tradeoffs
 
@@ -222,8 +247,8 @@ point at the same text into one.
 ## TBD before submission
 
 - [ ] **Throughput claim:** what I claim and how I support it
-- [ ] Evaluation results on the labelled mock data
-- [ ] Which LLM model, and why
+- [ ] Evaluation results on the labelled mock data (first run in D18; re-run after turning off the prominence rule)
+- [x] Which LLM model, and why (D16: Claude Opus 5.5)
 - [ ] Upgrade Render to Starter (no idle sleep); confirm the free database outlasts the review window
 
 ## How I used AI

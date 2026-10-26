@@ -70,9 +70,11 @@ export function Rules({ config }: { config: ReviewConfig | null }) {
             {rules
               .filter((r) => r.type === s.type)
               .map((r) => (
-                <div key={r.id} className="card rule">
+                <div key={r.id} className={`card rule${r.enabled ? '' : ' off'}`}>
                   <div className="rule-head">
-                    <strong>{r.name}</strong>
+                    <strong>
+                      {r.name} {!r.enabled && <span className="chip">Off in v1</span>}
+                    </strong>
                     <span className="cite">{r.citation}</span>
                   </div>
                   <p>{r.description}</p>

@@ -19,6 +19,10 @@ JUDGMENT_RULES: list[JudgmentRule] = [
         "interest rate or a periodic rate) is shown more prominently than the APR, or the rate "
         "can increase after the loan starts and the ad doesn't say so.",
         products=CLOSED_END,
+        # Off in v1: "more prominently" is about visual prominence, which can't be judged
+        # from text alone (A13), the same reason 1026.24(b) and (f) are out of scope. The
+        # evaluation backed this up: it fired wrongly on 2 of 15 ads.
+        enabled=False,
     ),
     JudgmentRule(
         id="llm-regz-24i2-comparison",

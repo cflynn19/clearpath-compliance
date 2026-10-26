@@ -1027,6 +1027,11 @@ textarea {
   padding: 14px 16px;
 }
 
+.rule.off {
+  opacity: 0.6;
+  box-shadow: none;
+}
+
 .rule p {
   flex: 1;
   margin: 0;
