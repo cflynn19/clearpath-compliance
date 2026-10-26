@@ -139,6 +139,28 @@ grader's clicks don't break the demo for the next.
 - The "is this percentage a rate?" test is a word list, and could be smarter.
 - The taxes-and-insurance rule assumes every mortgage is first-lien (A22).
 
+### D16. LLM checks
+- **Claude Opus 5.5, one call per asset** covering every judgment rule that applies.
+  Cheaper and faster than one call per rule, and the model sees the whole ad at once.
+- **The model only reports; code decides what counts.** Findings must name a rule the
+  model was given and quote text that exists in the asset (D4). Everything else is
+  dropped, and the UI says how many were dropped.
+- **Untrusted content is fenced** inside a randomly named tag it can't close, and the
+  prompt tells the model to report embedded instructions, not follow them. A code rule
+  catches the obvious injection phrases too, because text that hijacks the model could
+  also suppress the model's own injection flag (D12).
+- **Limits are visible:** "8 of 10 AI checks left this hour". When they run out, the
+  code checks still run and the UI says so.
+- **No "re-run" on unchanged text.** The same text returns the stored result, free and
+  without using the limit. The model can answer differently on a second run, and two
+  answers for one unchanged ad is exactly what the audit trail (D9) exists to prevent.
+  New text means a new check.
+- **Visitors are counted by IP address, stored hashed.** The forwarded-for header can be
+  forged, but that only buys more per-visitor quota; the global daily cap is what bounds
+  the cost.
+- **If the model declines** (a safety classifier), the request falls back to Anthropic's
+  recommended fallback model instead of failing.
+
 ## Not in v1, and why
 
 | Cut | Why |

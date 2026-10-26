@@ -77,6 +77,29 @@ class Rule:
     source: Literal["builtin", "custom"] = "builtin"
 
     def applies_to(self, asset: Asset) -> bool:
-        return (not self.products or asset.product in self.products) and (
-            not self.channels or asset.channel in self.channels
-        )
+        return _in_scope(self.products, self.channels, asset)
+
+
+@dataclass(frozen=True)
+class JudgmentRule:
+    """A rule the LLM evaluates. Every flag it raises is "needs judgment"."""
+
+    id: str
+    name: str
+    citation: str
+    instruction: str  # plain English, sent to the model
+    products: frozenset[Product] = frozenset()
+    channels: frozenset[Channel] = frozenset()
+    enabled: bool = True
+    source: Literal["builtin", "custom"] = "builtin"
+    requires_subject: bool = False  # skip when the asset has no subject line
+    type: FlagType = FlagType.NEEDS_JUDGMENT
+
+    def applies_to(self, asset: Asset) -> bool:
+        if self.requires_subject and not asset.subject:
+            return False
+        return _in_scope(self.products, self.channels, asset)
+
+
+def _in_scope(products: frozenset[Product], channels: frozenset[Channel], asset: Asset) -> bool:
+    return (not products or asset.product in products) and (not channels or asset.channel in channels)

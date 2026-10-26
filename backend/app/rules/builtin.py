@@ -241,6 +241,38 @@ def opt_out(asset: Asset) -> list[Finding]:
     return [Finding(why="No way to opt out of future marketing email (e.g. an unsubscribe link).")]
 
 
+# --- Security: text aimed at automated review (prompt injection, D12) -----------------
+
+# The LLM has its own injection rule, but text that hijacks the model could also
+# suppress that rule. A regex can't be talked out of matching, so this is the backstop.
+# DECISION(Q14): code rules are "check failed", so this is too: the text being there is
+# a fact, even though whether it's malicious is a judgment.
+INJECTION = re.compile(
+    r"\b(?:ignore|disregard|forget)\s(?:all\s|any\s|the\s)?(?:previous|prior|above|earlier|system)\s"
+    r"(?:instructions|rules|prompts?|guidelines)"
+    r"|\b(?:mark|classify|report|flag|treat)\s(?:this|the)\s(?:ad|asset|content|email|page|post|copy)\s"
+    r"as\s(?:compliant|approved|safe|clean)"
+    r"|\bno\s(?:compliance\s)?(?:issues|violations)\s(?:were\s)?(?:found|here|present)"
+    r"|\bsystem\sprompt\b"
+    r"|\b(?:as|you\sare|you're)\san?\s(?:AI|LLM|language\smodel|assistant|automated\sreviewer)\b"
+    r"|\bAI\s(?:reviewer|model|system|assistant)s?\b",
+    re.I,
+)
+
+
+def injection(asset: Asset) -> list[Finding]:
+    spans = _spans(INJECTION.finditer(asset.body))
+    if not spans:
+        return []
+    return [
+        Finding(
+            why=f"Contains text that addresses an automated reviewer ({_quoted(spans)}). "
+            "It may be an attempt to manipulate AI review; check this asset by hand.",
+            spans=spans,
+        )
+    ]
+
+
 BUILTIN_RULES: list[Rule] = [
     Rule(
         id="regz-24c-rate-as-apr",
@@ -317,5 +349,14 @@ BUILTIN_RULES: list[Rule] = [
         description="Marketing email must explain how to opt out of future marketing email.",
         check=opt_out,
         channels=EMAIL,
+    ),
+    Rule(
+        id="security-injection",
+        name="Text aimed at automated review",
+        type=FlagType.CHECK_FAILED,
+        citation="Security: prompt injection (D12)",
+        description="Text that addresses an AI or automated reviewer, or tries to change how "
+        "the asset is reviewed.",
+        check=injection,
     ),
 ]
