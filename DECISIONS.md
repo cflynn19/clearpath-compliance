@@ -175,6 +175,26 @@ with "5.99%" and no APR got both the code flag (rate not stated as APR) and the 
 ads that do state an APR. The general fix is to merge a code flag and an LLM flag that
 point at the same text into one.
 
+### D17. Review workflow
+- **Every check creates a queue item.** Pasting an ad in "New check" stores it like any
+  other submission, so nothing is reviewed off the record.
+- **Check-failed flags are dismissed with a reason; judgment flags can also be
+  acknowledged.** A definite violation can't just be noted: it gets a reason on record,
+  or the ad is rejected.
+- **Resolutions can be undone** until the ad is decided. Undo is logged too.
+- **Approve is blocked until every flag is resolved; reject is always available** (D5).
+  Once decided, the ad and its flags are locked.
+- **"Fixed in this revision" isn't a dismissal reason in v1,** because there's no
+  revision loop yet. It comes back with re-review.
+- **Every action lands in an append-only audit trail:** who, what, when, and the reason
+  and note. With no login (A17), actions are recorded as "Demo reviewer"; a real login
+  only changes that name.
+- **The demo queue seeds itself** on first start (8 sample ads, AI-checked once, in the
+  background so the app serves immediately). Reset re-seeds from the stored AI results,
+  so it costs nothing.
+- **The Rules page shows how often each rule fires and how often it's dismissed** (D7),
+  so a rule reviewers keep overriding is easy to spot.
+
 ## Not in v1, and why
 
 | Cut | Why |

@@ -23,14 +23,15 @@ class AnalyzeResult(BaseModel):
     ai: AIStatus
 
 
-def analyze(asset: Asset, visitor: str) -> AnalyzeResult:
+def analyze(asset: Asset, visitor: str, enforce_limits: bool = True) -> AnalyzeResult:
+    """enforce_limits=False is for server-side work only (seeding the demo queue)."""
     code_flags = run_code_checks(asset)
-    ai_flags, ai = _ai_checks(asset, visitor)
+    ai_flags, ai = _ai_checks(asset, visitor, enforce_limits)
     flags = sorted(code_flags + ai_flags, key=lambda f: f.spans[0].start if f.spans else -1)
     return AnalyzeResult(flags=flags, ai=ai)
 
 
-def _ai_checks(asset: Asset, visitor: str) -> tuple[list[Flag], AIStatus]:
+def _ai_checks(asset: Asset, visitor: str, enforce_limits: bool) -> tuple[list[Flag], AIStatus]:
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return [], AIStatus(
             status="disabled",
@@ -52,7 +53,7 @@ def _ai_checks(asset: Asset, visitor: str) -> tuple[list[Flag], AIStatus]:
             dropped=dropped,
         )
 
-    allowed, limit, left = store.reserve_call(visitor)
+    allowed, limit, left = store.reserve_call(visitor) if enforce_limits else (True, None, store.remaining(visitor))
     if not allowed:
         message = (
             "AI checks are paused for today (daily limit reached). Code checks still ran."

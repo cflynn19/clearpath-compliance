@@ -1,5 +1,5 @@
-import hashlib
 import os
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -16,8 +16,12 @@ from . import analysis  # noqa: E402
 from .db import engine  # noqa: E402
 from .llm import store  # noqa: E402
 from .llm.rules import JUDGMENT_RULES  # noqa: E402
+from .review import api as review_api  # noqa: E402
+from .review import seeds  # noqa: E402
+from .review import store as review_store  # noqa: E402
 from .rules.builtin import BUILTIN_RULES  # noqa: E402
 from .rules.models import Asset, Channel, FlagType, Product  # noqa: E402
+from .visitors import visitor_id  # noqa: E402
 
 
 @asynccontextmanager
@@ -25,22 +29,15 @@ async def lifespan(app: FastAPI):
     # DECISION(Q16): tables are created at startup. Fine while the schema is small;
     # switch to migrations (Alembic) once there's data worth preserving across changes.
     store.metadata.create_all(engine)
+    review_store.metadata.create_all(engine)
+    # Seeding runs the AI checks on the demo queue the first time, which takes a minute,
+    # so it happens in the background and the app starts serving straight away.
+    threading.Thread(target=seeds.seed_if_empty, daemon=True).start()
     yield
 
 
 app = FastAPI(title="ClearPath Compliance Review", lifespan=lifespan)
-
-
-def visitor_id(request: Request) -> str:
-    """Who to count usage against: the client's IP address, hashed so it isn't stored raw.
-
-    Behind Render's proxy the client address is the first X-Forwarded-For entry. A client
-    can forge that header, but all it gains is more per-visitor quota; the global daily
-    cap still bounds the cost (D11).
-    """
-    forwarded = request.headers.get("x-forwarded-for")
-    ip = forwarded.split(",")[0].strip() if forwarded else (request.client.host if request.client else "")
-    return hashlib.sha256(ip.encode()).hexdigest()[:32]
+app.include_router(review_api.router)
 
 
 @app.get("/api/health")
@@ -75,6 +72,12 @@ def limits(request: Request) -> Limits:
     )
 
 
+class RuleStats(BaseModel):
+    flagged: int = 0
+    dismissed: int = 0
+    reasons: dict[str, int] = {}
+
+
 class RuleOut(BaseModel):
     id: str
     name: str
@@ -85,10 +88,12 @@ class RuleOut(BaseModel):
     channels: list[Channel]
     enabled: bool
     source: str
+    stats: RuleStats
 
 
 @app.get("/api/rules")
 def rules() -> list[RuleOut]:
+    stats = review_store.rule_stats()
     code = [
         RuleOut(
             id=r.id,
@@ -100,6 +105,7 @@ def rules() -> list[RuleOut]:
             channels=sorted(r.channels),
             enabled=r.enabled,
             source=r.source,
+            stats=RuleStats(**stats.get(r.id, {})),
         )
         for r in BUILTIN_RULES
     ]
@@ -114,6 +120,7 @@ def rules() -> list[RuleOut]:
             channels=sorted(r.channels),
             enabled=r.enabled,
             source=r.source,
+            stats=RuleStats(**stats.get(r.id, {})),
         )
         for r in JUDGMENT_RULES
     ]
