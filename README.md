@@ -23,4 +23,23 @@ Build plan: [PLAN.md](PLAN.md)
 
 ## Running locally
 
-_TBD_
+Needs Python 3.12, Node 22+, and a local Postgres.
+
+```bash
+createdb clearpath
+cp .env.example .env
+
+# API on :8000
+cd backend
+python3.12 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/uvicorn app.main:app --reload
+
+# UI on :5173 (forwards /api to :8000), in a second terminal
+cd frontend
+npm install
+npm run dev
+```
+
+Production runs as a single container (see `Dockerfile`): FastAPI serves both the API
+and the built React app.
