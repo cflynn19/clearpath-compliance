@@ -15,7 +15,7 @@ from app.review import store as review_store  # noqa: E402
 from app.rules import registry  # noqa: E402
 
 store.metadata.create_all(engine)
-review_store.metadata.create_all(engine)
+review_store.ensure_schema()
 registry.metadata.create_all(engine)
 
 

@@ -72,11 +72,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json()
 }
 
-export type AssetStatus = 'in_review' | 'approved' | 'rejected'
+export type AssetStatus = 'in_review' | 'needs_changes' | 'approved' | 'rejected'
 export type FlagStatus = 'open' | 'dismissed' | 'acknowledged'
 
 export const STATUS_LABEL: Record<AssetStatus, string> = {
   in_review: 'In review',
+  needs_changes: 'Changes requested',
   approved: 'Approved',
   rejected: 'Rejected',
 }
@@ -88,6 +89,15 @@ export interface StoredFlag extends Flag {
   note: string | null
   resolved_by: string | null
   resolved_at: string | null
+  carried_over: boolean
+}
+
+export interface Comparison {
+  version: number
+  fixed: string[]
+  still_flagged: string[]
+  new: string[]
+  carried_over: number
 }
 
 export interface ReviewEvent {
@@ -119,6 +129,7 @@ export interface AssetDetail extends Omit<AssetSummary, 'open_failed' | 'open_ju
   version: { number: number; subject: string | null; body: string; ai: AiStatus; created_at: string }
   flags: StoredFlag[]
   events: ReviewEvent[]
+  comparison: Comparison | null
 }
 
 export interface NewAsset extends Asset {
@@ -158,8 +169,11 @@ export const dismissFlag = (id: number, reason: string, note: string) =>
   request<AssetDetail>(`/api/flags/${id}/dismiss`, post({ reason, note }))
 export const acknowledgeFlag = (id: number) => request<AssetDetail>(`/api/flags/${id}/acknowledge`, post())
 export const reopenFlag = (id: number) => request<AssetDetail>(`/api/flags/${id}/reopen`, post())
-export const decide = (id: number, decision: 'approve' | 'reject', note: string) =>
+export type DecisionKind = 'approve' | 'reject' | 'request_changes'
+export const decide = (id: number, decision: DecisionKind, note: string) =>
   request<AssetDetail>(`/api/assets/${id}/decision`, post({ decision, note }))
+export const submitRevision = (id: number, body: string, subject: string | null) =>
+  request<AssetDetail>(`/api/assets/${id}/revisions`, post({ body, subject }))
 export const getRules = () => request<Rule[]>('/api/rules')
 
 export interface NewRule {

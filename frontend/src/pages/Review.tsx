@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { acknowledgeFlag, CHANNELS, decide, dismissFlag, getAsset, PRODUCTS, reopenFlag, STATUS_LABEL } from '../api'
-import type { AssetDetail, FlagType, ReviewConfig, ReviewEvent, StoredFlag } from '../api'
+import { acknowledgeFlag, CHANNELS, decide, dismissFlag, getAsset, PRODUCTS, reopenFlag, STATUS_LABEL, submitRevision } from '../api'
+import type { AssetDetail, Comparison, DecisionKind, FlagType, ReviewConfig, ReviewEvent, StoredFlag } from '../api'
 import { clockTime, plural, shortReason, timeAgo } from '../format'
 import { countHidden, stripHidden } from '../hidden'
 import { Highlighted } from '../Highlighted'
@@ -81,6 +81,10 @@ export function Review({ id, config, onChange }: { id: number; config: ReviewCon
 
       <Verdict asset={asset} openFailed={openFailed} openJudgment={openJudgment} resolved={resolved} />
 
+      {asset.comparison && <ComparisonBanner c={asset.comparison} />}
+      {asset.status === 'needs_changes' && (
+        <RevisePanel asset={asset} busy={busy} onSubmit={(body, subject) => act(() => submitRevision(asset.id, body, subject))} />
+      )}
       {ai.status !== 'ran' && ai.status !== 'cached' && <p className="notice">{ai.message}</p>}
       {ai.dropped > 0 && (
         <p className="notice subtle">
@@ -182,7 +186,7 @@ function Verdict({
   resolved: number
 }) {
   const total = asset.flags.length
-  let tone: 'bad' | 'good' | 'done-bad'
+  let tone: 'bad' | 'good' | 'done-bad' | 'pending'
   let title: string
   let detail: string
 
@@ -194,6 +198,12 @@ function Verdict({
     tone = 'done-bad'
     title = 'Rejected'
     detail = `by ${asset.decided_by} at ${clockTime(asset.decided_at!)}${asset.decision_note ? `: “${asset.decision_note}”` : ''}`
+  } else if (asset.status === 'needs_changes') {
+    tone = 'pending'
+    title = 'Changes requested'
+    const ev = asset.events.find((e) => e.action === 'changes_requested')
+    const note = ev?.detail.note as string | null | undefined
+    detail = `Waiting on ${asset.submitter} for a revised version${note ? `: “${note}”` : '.'}`
   } else if (openFailed + openJudgment > 0) {
     tone = 'bad'
     title = 'Not ready to approve'
@@ -213,7 +223,7 @@ function Verdict({
   return (
     <section className={`card verdict verdict-${tone}`}>
       <div className="verdict-main">
-        <span className="verdict-icon">{tone === 'bad' ? '!' : tone === 'good' ? '✓' : '✕'}</span>
+        <span className="verdict-icon">{tone === 'bad' ? '!' : tone === 'good' ? '✓' : tone === 'pending' ? '↺' : '✕'}</span>
         <div>
           <strong>{title}</strong>
           <span>{detail}</span>
@@ -271,6 +281,11 @@ function FlagCard({
         {flag.spans.length === 0 && <span className="chip">Whole ad</span>}
         {flag.status === 'dismissed' && <span className="chip done">Dismissed</span>}
         {flag.status === 'acknowledged' && <span className="chip done">Acknowledged</span>}
+        {flag.carried_over && (
+          <span className="chip" title="Resolved on the previous version; same rule, same text, so it carried over">
+            Carried over
+          </span>
+        )}
       </div>
       <p>{flag.why}</p>
       {flag.spans.some((s) => s.field === 'subject' || countHidden(s.quote)) && (
@@ -388,28 +403,37 @@ function DecisionBar({
 }: {
   openCount: number
   busy: boolean
-  onDecide: (decision: 'approve' | 'reject', note: string) => void
+  onDecide: (decision: DecisionKind, note: string) => void
 }) {
-  const [rejecting, setRejecting] = useState(false)
+  // Reject and request changes both take an optional note before confirming.
+  const [pending, setPending] = useState<'reject' | 'request_changes' | null>(null)
   const [note, setNote] = useState('')
 
   return (
     <footer className="decision-bar">
-      {rejecting ? (
+      {pending ? (
         <>
           <input
             autoFocus
             maxLength={1000}
-            placeholder="Reason for rejecting (optional, goes to the audit trail)"
+            placeholder={
+              pending === 'reject'
+                ? 'Reason for rejecting (optional, goes to the audit trail)'
+                : 'Note for the submitter (optional: the open flags are already the list of fixes)'
+            }
             value={note}
             onChange={(e) => setNote(e.target.value)}
           />
           <div className="decision-actions">
-            <button className="btn ghost" onClick={() => setRejecting(false)}>
+            <button className="btn ghost" onClick={() => setPending(null)}>
               Cancel
             </button>
-            <button className="btn danger" disabled={busy} onClick={() => onDecide('reject', note)}>
-              Confirm reject
+            <button
+              className={`btn ${pending === 'reject' ? 'danger' : 'primary'}`}
+              disabled={busy}
+              onClick={() => onDecide(pending, note)}
+            >
+              {pending === 'reject' ? 'Confirm reject' : 'Send back for changes'}
             </button>
           </div>
         </>
@@ -417,13 +441,18 @@ function DecisionBar({
         <>
           <span className="hint">
             {openCount
-              ? `Resolve the ${plural(openCount, 'open flag')} to approve. You can reject at any time.`
+              ? `Resolve the ${plural(openCount, 'open flag')} to approve, or send it back for changes.`
               : 'Every flag is resolved. Approve, or reject if it still isn’t right.'}
           </span>
           <div className="decision-actions">
-            <button className="btn outline-danger" disabled={busy} onClick={() => setRejecting(true)}>
+            <button className="btn outline-danger" disabled={busy} onClick={() => setPending('reject')}>
               Reject
             </button>
+            {openCount > 0 && (
+              <button className="btn soft" disabled={busy} onClick={() => setPending('request_changes')}>
+                Request changes
+              </button>
+            )}
             <button className="btn primary" disabled={busy || openCount > 0} onClick={() => onDecide('approve', '')}>
               Approve
             </button>
@@ -442,6 +471,8 @@ const ACTION_TEXT: Record<string, string> = {
   flag_reopened: 'reopened',
   approved: 'approved the ad',
   rejected: 'rejected the ad',
+  changes_requested: 'requested changes',
+  revised: 'submitted a revised version',
 }
 
 function describe(e: ReviewEvent, reasons: Record<string, string>) {
@@ -453,7 +484,69 @@ function describe(e: ReviewEvent, reasons: Record<string, string>) {
     const reason = d.reason ? ` as ${shortReason(reasons, d.reason as string).toLowerCase()}` : ''
     return `${ACTION_TEXT[e.action]} “${d.rule}”${reason}${d.note ? `: “${d.note}”` : ''}`
   }
+  if (e.action === 'revised') {
+    const c = e.detail as unknown as Comparison
+    return `${ACTION_TEXT.revised} (v${c.version}): ${c.fixed.length} fixed, ${c.still_flagged.length} still flagged, ${c.new.length} new, ${c.carried_over} carried over`
+  }
+  if (e.action === 'changes_requested') {
+    return `${ACTION_TEXT.changes_requested} (${plural(Number(d.open_flags), 'open flag')})${d.note ? `: “${d.note}”` : ''}`
+  }
   return `${ACTION_TEXT[e.action] ?? e.action}${d.note ? `: “${d.note}”` : ''}`
+}
+
+function ComparisonBanner({ c }: { c: Comparison }) {
+  const part = (n: number, label: string, names: string[], tone: string) =>
+    n > 0 && (
+      <span className={`cmp ${tone}`} title={names.join(' · ')}>
+        {n} {label}
+      </span>
+    )
+  return (
+    <section className="card comparison">
+      <span className="eyebrow">Since version {c.version - 1}</span>
+      <div className="cmp-row">
+        {part(c.fixed.length, 'fixed', c.fixed, 'ok')}
+        {part(c.still_flagged.length, 'still flagged', c.still_flagged, 'judge')}
+        {part(c.new.length, 'new', c.new, 'fail')}
+        {part(c.carried_over, 'carried over', [], 'muted')}
+        {!c.fixed.length && !c.still_flagged.length && !c.new.length && !c.carried_over && (
+          <span className="cmp muted">No change in flags</span>
+        )}
+      </div>
+    </section>
+  )
+}
+
+// There's no submitter portal in v1 (A6), so the submitter's corrected copy is entered here.
+function RevisePanel({
+  asset,
+  busy,
+  onSubmit,
+}: {
+  asset: AssetDetail
+  busy: boolean
+  onSubmit: (body: string, subject: string | null) => void
+}) {
+  const [body, setBody] = useState(asset.version.body)
+  const [subject, setSubject] = useState(asset.version.subject ?? '')
+  const isEmail = asset.channel === 'email'
+  const changed = body !== asset.version.body || (isEmail && subject !== (asset.version.subject ?? ''))
+  return (
+    <section className="card revise">
+      <div className="eyebrow">Submit a revised version · as {asset.submitter}</div>
+      {isEmail && <input value={subject} maxLength={500} onChange={(e) => setSubject(e.target.value)} />}
+      <textarea rows={6} maxLength={20000} value={body} onChange={(e) => setBody(e.target.value)} />
+      <div className="form-actions">
+        <button
+          className="btn primary"
+          disabled={busy || !body.trim() || !changed}
+          onClick={() => onSubmit(body, isEmail && subject.trim() ? subject : null)}
+        >
+          {busy ? 'Checking…' : 'Submit version ' + (asset.version.number + 1)}
+        </button>
+      </div>
+    </section>
+  )
 }
 
 function Activity({ events, reasons }: { events: ReviewEvent[]; reasons: Record<string, string> }) {

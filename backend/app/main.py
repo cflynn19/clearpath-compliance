@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI):
     # DECISION(Q16): tables are created at startup. Fine while the schema is small;
     # switch to migrations (Alembic) once there's data worth preserving across changes.
     store.metadata.create_all(engine)
-    review_store.metadata.create_all(engine)
+    review_store.ensure_schema()
     registry.metadata.create_all(engine)
     # Seeding runs the AI checks on the demo queue the first time, which takes a minute,
     # so it happens in the background and the app starts serving straight away.

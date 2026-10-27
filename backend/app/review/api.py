@@ -29,6 +29,7 @@ class FlagOut(BaseModel):
     note: str | None
     resolved_by: str | None
     resolved_at: datetime | None
+    carried_over: bool
 
 
 class EventOut(BaseModel):
@@ -53,7 +54,7 @@ class AssetSummary(BaseModel):
     submitter: str
     product: Product
     channel: Channel
-    status: Literal["in_review", "approved", "rejected"]
+    status: Literal["in_review", "needs_changes", "approved", "rejected"]
     created_at: datetime
     decided_at: datetime | None
     open_failed: int
@@ -68,7 +69,7 @@ class AssetDetail(BaseModel):
     submitter: str
     product: Product
     channel: Channel
-    status: Literal["in_review", "approved", "rejected"]
+    status: Literal["in_review", "needs_changes", "approved", "rejected"]
     created_at: datetime
     decided_by: str | None
     decided_at: datetime | None
@@ -76,6 +77,7 @@ class AssetDetail(BaseModel):
     version: VersionOut
     flags: list[FlagOut]
     events: list[EventOut]
+    comparison: dict | None  # what changed since the previous version, if this is a revision
 
 
 class NewAsset(Asset):
@@ -89,7 +91,7 @@ class Dismissal(BaseModel):
 
 
 class Decision(BaseModel):
-    decision: Literal["approve", "reject"]
+    decision: Literal["approve", "reject", "request_changes"]
     note: str | None = Field(default=None, max_length=1000)
 
 
@@ -127,6 +129,27 @@ def create_asset(new: NewAsset, request: Request) -> AssetDetail:
 def _default_title(body: str) -> str:
     words = body.split()
     return " ".join(words[:7]) + ("…" if len(words) > 7 else "")
+
+
+class Revision(BaseModel):
+    body: str = Field(min_length=1, max_length=20_000)
+    subject: str | None = Field(default=None, max_length=500)
+
+
+@router.post("/assets/{asset_id}/revisions")
+def revise(asset_id: int, revision: Revision, request: Request) -> AssetDetail:
+    """The submitter's corrected copy, after the reviewer requested changes.
+
+    There's no submitter portal in v1 (A6), so the demo submits it from the ad's page.
+    """
+    current = store.get_asset(asset_id)
+    if current is None:
+        raise HTTPException(404, "Ad not found.")
+    if current["status"] != "needs_changes":
+        raise HTTPException(409, "Revisions can only be submitted after changes are requested.")
+    asset = Asset(body=revision.body, subject=revision.subject, product=current["product"], channel=current["channel"])
+    result = analysis.analyze(asset, visitor_id(request))
+    return _run(store.revise, asset_id, asset, result.flags, result.ai, current["submitter"])
 
 
 @router.get("/assets/{asset_id}")

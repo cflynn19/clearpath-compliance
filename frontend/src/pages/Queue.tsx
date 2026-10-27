@@ -6,12 +6,14 @@ import { href } from '../router'
 
 const FILTERS: { key: AssetStatus | 'all'; label: string }[] = [
   { key: 'in_review', label: 'In review' },
+  { key: 'needs_changes', label: 'Changes requested' },
   { key: 'approved', label: 'Approved' },
   { key: 'rejected', label: 'Rejected' },
   { key: 'all', label: 'All' },
 ]
 
 function FlagSummary({ a }: { a: AssetSummary }) {
+  if (a.status === 'needs_changes') return <span className="pill judge">With submitter</span>
   if (a.status !== 'in_review') return null
   if (!a.open_failed && !a.open_judgment) {
     return <span className="pill ok">{a.total ? 'All flags resolved' : 'No flags'}</span>
@@ -66,9 +68,10 @@ export function Queue({ assets, rule }: { assets: AssetSummary[] | null; rule?: 
   const shown = matching
     .filter((a) => filter === 'all' || a.status === filter)
     .sort((a, b) => {
-      const [aOpen, bOpen] = [a.status === 'in_review', b.status === 'in_review']
-      if (aOpen !== bOpen) return aOpen ? -1 : 1
-      return aOpen ? time(a.created_at) - time(b.created_at) : time(b.decided_at) - time(a.decided_at)
+      // In review, then waiting on the submitter, then decided.
+      const rank = (x: AssetSummary) => (x.status === 'in_review' ? 0 : x.status === 'needs_changes' ? 1 : 2)
+      if (rank(a) !== rank(b)) return rank(a) - rank(b)
+      return rank(a) < 2 ? time(a.created_at) - time(b.created_at) : time(b.decided_at) - time(a.decided_at)
     })
   const count = (key: AssetStatus | 'all') => matching.filter((a) => key === 'all' || a.status === key).length
   const filtered = Boolean(product || channel || failedOnly || q)
@@ -187,7 +190,9 @@ export function Queue({ assets, rule }: { assets: AssetSummary[] | null; rule?: 
                       {a.submitter} ·{' '}
                       {a.status === 'in_review'
                         ? `waiting ${waitingSince(a.created_at)}`
-                        : `decided ${timeAgo(a.decided_at ?? a.created_at)}`}
+                        : a.status === 'needs_changes'
+                          ? 'sent back for changes'
+                          : `decided ${timeAgo(a.decided_at ?? a.created_at)}`}
                     </span>
                   </div>
                 </div>

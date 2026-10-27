@@ -5,6 +5,7 @@ from statistics import median
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     Column,
     DateTime,
     ForeignKey,
@@ -32,7 +33,8 @@ assets = Table(
     Column("submitter", Text, nullable=False),
     Column("product", String(32), nullable=False),
     Column("channel", String(32), nullable=False),
-    Column("status", String(16), nullable=False, server_default="in_review"),  # in_review | approved | rejected
+    # in_review | needs_changes (sent back to the submitter) | approved | rejected
+    Column("status", String(16), nullable=False, server_default="in_review"),
     Column("decided_by", Text),
     Column("decided_at", DateTime(timezone=True)),
     Column("decision_note", Text),
@@ -69,6 +71,8 @@ flags = Table(
     Column("note", Text),
     Column("resolved_by", Text),
     Column("resolved_at", DateTime(timezone=True)),
+    # True when a reviewer's resolution was carried over from the previous version.
+    Column("carried_over", Boolean, nullable=False, server_default="false"),
 )
 
 # Append-only: every action, by whom, when.
@@ -83,6 +87,12 @@ events = Table(
     Column("detail", JSON, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
+
+def ensure_schema() -> None:
+    metadata.create_all(engine)
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE flags ADD COLUMN IF NOT EXISTS carried_over BOOLEAN NOT NULL DEFAULT false"))
+
 
 # D6. "Fixed in this revision" waits for the revision loop, which isn't in v1.
 DISMISS_REASONS = {
@@ -110,6 +120,27 @@ def _event(conn, asset_id: int, actor: str, action: str, detail: dict, flag_id: 
             asset_id=asset_id, flag_id=flag_id, actor=actor, action=action, detail=detail, created_at=at or _now()
         )
     )
+
+
+def _flag_rows(version_id: int, found: list[Flag]) -> list[dict]:
+    return [
+        {
+            "version_id": version_id,
+            "rule_id": f.rule_id,
+            "rule_name": f.rule_name,
+            "type": f.type.value,
+            "citation": f.citation,
+            "why": f.why,
+            "spans": [sp.model_dump(mode="json") for sp in f.spans],
+        }
+        for f in found
+    ]
+
+
+def _latest_version(conn, asset_id: int):
+    return conn.execute(
+        select(versions).where(versions.c.asset_id == asset_id).order_by(versions.c.number.desc()).limit(1)
+    ).first()
 
 
 def create_asset(
@@ -148,21 +179,7 @@ def create_asset(
             .returning(versions.c.id)
         ).scalar_one()
         if found:
-            conn.execute(
-                flags.insert(),
-                [
-                    {
-                        "version_id": version_id,
-                        "rule_id": f.rule_id,
-                        "rule_name": f.rule_name,
-                        "type": f.type.value,
-                        "citation": f.citation,
-                        "why": f.why,
-                        "spans": [s.model_dump(mode="json") for s in f.spans],
-                    }
-                    for f in found
-                ],
-            )
+            conn.execute(flags.insert(), _flag_rows(version_id, found))
         _event(conn, asset_id, submitter, "submitted", {"version": 1}, at=at)
         _event(
             conn,
@@ -216,18 +233,20 @@ def get_asset(asset_id: int) -> dict | None:
         row = conn.execute(select(assets).where(assets.c.id == asset_id)).first()
         if row is None:
             return None
-        version = conn.execute(
-            select(versions).where(versions.c.asset_id == asset_id).order_by(versions.c.number.desc()).limit(1)
-        ).first()
+        version = _latest_version(conn, asset_id)
         flag_rows = conn.execute(select(flags).where(flags.c.version_id == version.id).order_by(flags.c.id)).all()
         event_rows = conn.execute(
             select(events).where(events.c.asset_id == asset_id).order_by(events.c.created_at.desc(), events.c.id.desc())
         ).all()
+    comparison = next(
+        (e.detail for e in event_rows if e.action == "revised" and e.detail.get("version") == version.number), None
+    )
     return {
         **dict(row._mapping),
         "version": dict(version._mapping),
         "flags": [dict(f._mapping) for f in flag_rows],
         "events": [dict(e._mapping) for e in event_rows],
+        "comparison": comparison,
     }
 
 
@@ -291,23 +310,31 @@ def reopen_flag(flag_id: int, actor: str) -> int:
 
 
 def decide(asset_id: int, decision: str, note: str | None, actor: str) -> None:
-    if decision not in ("approve", "reject"):
-        raise ReviewError(422, "Decision must be approve or reject.")
+    if decision not in ("approve", "reject", "request_changes"):
+        raise ReviewError(422, "Decision must be approve, reject or request_changes.")
     note = (note or "").strip() or None
     with engine.begin() as conn:
         row = conn.execute(select(assets).where(assets.c.id == asset_id).with_for_update()).first()
         if row is None:
             raise ReviewError(404, "Ad not found.")
-        if row.status != "in_review":
-            raise ReviewError(409, "This ad has already been decided.")
-        if decision == "approve":
-            open_flags = conn.scalar(
-                select(func.count())
-                .select_from(flags.join(versions))
-                .where(versions.c.asset_id == asset_id, flags.c.status == "open")
-            )
-            if open_flags:
-                raise ReviewError(409, f"Resolve the {open_flags} open flag(s) before approving.")
+        # Rejecting is allowed while waiting on the submitter; everything else needs the ad in review.
+        allowed = ("in_review", "needs_changes") if decision == "reject" else ("in_review",)
+        if row.status not in allowed:
+            raise ReviewError(409, "This ad isn't in review.")
+        # Only the current version counts: earlier versions' flags are history.
+        version = _latest_version(conn, asset_id)
+        open_flags = conn.scalar(
+            select(func.count()).select_from(flags).where(flags.c.version_id == version.id, flags.c.status == "open")
+        )
+        if decision == "approve" and open_flags:
+            raise ReviewError(409, f"Resolve the {open_flags} open flag(s) before approving.")
+
+        if decision == "request_changes":
+            # Not a final decision: the ad goes back to the submitter, and the open flags are
+            # the list of what to fix.
+            conn.execute(assets.update().where(assets.c.id == asset_id).values(status="needs_changes"))
+            _event(conn, asset_id, actor, "changes_requested", {"note": note, "open_flags": open_flags})
+            return
         status = "approved" if decision == "approve" else "rejected"
         conn.execute(
             assets.update()
@@ -315,6 +342,65 @@ def decide(asset_id: int, decision: str, note: str | None, actor: str) -> None:
             .values(status=status, decided_by=actor, decided_at=_now(), decision_note=note)
         )
         _event(conn, asset_id, actor, status, {"note": note})
+
+
+def _quotes(spans: list) -> tuple:
+    return tuple(sorted(" ".join(sp["quote"].split()).lower() for sp in spans))
+
+
+def revise(asset_id: int, asset: Asset, found: list[Flag], ai: AIStatus, actor: str) -> int:
+    """Store a revised version sent back by the submitter, and compare it with the last one.
+
+    The re-review time saver: if the reviewer dismissed or acknowledged a flag and the same
+    rule fires on the same text again, that resolution carries over, so nobody resolves the
+    same false positive twice. If the text changed, the flag reopens.
+    """
+    with engine.begin() as conn:
+        row = conn.execute(select(assets).where(assets.c.id == asset_id).with_for_update()).first()
+        if row is None:
+            raise ReviewError(404, "Ad not found.")
+        if row.status != "needs_changes":
+            raise ReviewError(409, "Revisions can only be submitted after changes are requested.")
+        previous = _latest_version(conn, asset_id)
+        prev_flags = conn.execute(select(flags).where(flags.c.version_id == previous.id)).all()
+        number = previous.number + 1
+        version_id = conn.execute(
+            versions.insert()
+            .values(asset_id=asset_id, number=number, subject=asset.subject, body=asset.body, ai=ai.model_dump(mode="json"))
+            .returning(versions.c.id)
+        ).scalar_one()
+
+        resolved_before = {(f.rule_id, _quotes(f.spans)): f for f in prev_flags if f.status != "open"}
+        rows = _flag_rows(version_id, found)
+        carried = 0
+        for r in rows:
+            match = resolved_before.get((r["rule_id"], _quotes(r["spans"])))
+            if match:
+                carried += 1
+                r.update(
+                    status=match.status,
+                    reason=match.reason,
+                    note=match.note,
+                    resolved_by=match.resolved_by,
+                    resolved_at=match.resolved_at,
+                    carried_over=True,
+                )
+        if rows:
+            conn.execute(flags.insert(), rows)
+
+        before = {f.rule_id: f.rule_name for f in prev_flags}
+        after = {f.rule_id: f.rule_name for f in found}
+        carried_ids = {r["rule_id"] for r in rows if r.get("carried_over")}
+        comparison = {
+            "version": number,
+            "fixed": sorted(before[r] for r in before.keys() - after.keys()),
+            "still_flagged": sorted(after[r] for r in (after.keys() & before.keys()) - carried_ids),
+            "new": sorted(after[r] for r in after.keys() - before.keys()),
+            "carried_over": carried,
+        }
+        conn.execute(assets.update().where(assets.c.id == asset_id).values(status="in_review"))
+        _event(conn, asset_id, actor, "revised", comparison)
+    return asset_id
 
 
 def rule_stats() -> dict[str, dict]:
