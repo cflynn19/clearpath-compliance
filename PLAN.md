@@ -27,9 +27,11 @@ stored against the version.
 - Dismissal counts per rule
 - Evaluation script on labelled data
 
-**Won't (v1):** see DECISIONS.md
+**Status at submission:** all Must and Should items shipped, plus a credit card promo-rate
+rule, queue filters, a team Insights page (throughput and rule health), a rule change
+history, per-rule AI verdicts, and a revision loop (request changes, re-check, carry over). **Won't (v1):** see DECISIONS.md.
 
-## Architecture (sketch, refine as I build)
+## Architecture (the plan; README has the final layout)
 
 - `backend/` FastAPI
   - `rules/`: built-in code checks, each one a small testable function
@@ -39,7 +41,7 @@ stored against the version.
 - `frontend/` React (Vite), built and served by FastAPI
 - Postgres
 
-**Entities (shape TBD):** Asset, AssetVersion, Rule, Flag, FlagResolution, Decision,
+**Entities (as planned):** Asset, AssetVersion, Rule, Flag, FlagResolution, Decision,
 AuditEvent
 
 ## v1 rules

@@ -3,302 +3,228 @@
 What I built, what I didn't, and why. The assumptions these rest on are in
 [ASSUMPTIONS.md](ASSUMPTIONS.md).
 
-## The problem as I understand it
+## How I used AI
+
+I was the product lead on this, making the important product decisions and assumptions. I took us in the directions I felt like were most important in the time I had for the initial v1. Claude handled most of the code, tests, and doc drafts. I had Claude mark any product decision and come back to me which I answered and those product decisions and discussions are labeled D1, D2, etc... in this file for a deeper dive if curious. I ran through testing myself and gave feedback on the UI/UX throughout ensuring we were emphasizing and showing the right things.
+
+## Throughput
+
+Right now it seems that a lot of time is spent both with the email and Excel system - constantly having to go back and check the status of items. And having to manually send back emails with review notes that the reviewer has most likely sent frequently. On top of that we have the obvious time it takes a reviewer to manually review each item, while reading each line and checking regulation documents constantly. Not to mention a most likely annoying re-review process that feels like a fresh start each time.
+
+So I built this v1 platform with the goal of speeding up those specific bottlenecks within the review process. A shared FIFO queue system with the oldest ads prioritized ensuring ads don't get backlogged and missed, and an easy re-review process where the reviewer only has to look at what changed: earlier resolutions carry over and a summary shows what was fixed, still flagged or new. We have default rules based on federal advertising regulations - Reg Z (Truth in Lending: 12 CFR 1026.24 for loans and mortgages, 1026.16(g) for credit card promotional rates), the CAN-SPAM Act for email, and UDAAP for misleading claims - so users don't have to search around for issues; they are right there for them. The platform identifies using code checks and AI processes the flags that users should look into instead of having to review the entire text word for word. The key assumption we made was the importance of overflagging instead of underflagging as to not miss potential issues. The other assumption being the review is ultimately still in the hands of the reviewer - AI here is a tool, not an auto review process.
+
+Building off of that I added the Insights log to measure throughput for ClearPath with metrics on speed of reviews and frequent dismissals of rules, while each ad keeps an audit trail to appease regulators and provide useful info for reviewers on the history of items. Insights that could prove the impact of the systems for ClearPath (adoption motivation) and also give them data to improve the speed and quality of their reviews given the insight onto the dismissal rates of rules.
+
+What I can't prove is any tangible improvement yet without real reviewers. Without information on how fast their email/Excel processes take and how fast actual users use the current platform this is still just hypothetical improvements. An easy way would be to at least get insight to how many approvals they go through in a day, week, month etc... and could determine a time per ad would help. That is something that I am sure I could get immediately from their Excel workflows.
+
+## The problem
 
 ClearPath's compliance team reviews marketing before it goes live. Today that runs on
 Excel and email, and it can't keep up with how much marketing (especially affiliate
 marketing) the company wants to run.
 
-**Goal:** more assets reviewed per reviewer per day, *without* lowering review quality.
+**Goal:** more ads reviewed per reviewer per day, *without* lowering review quality.
 
-**Approach:** a reviewer workspace where every asset arrives already checked. Definite
-rule violations are found by code, possible issues are found by an LLM, and the reviewer
-makes every final call. Status, decisions and history live in one place instead of in
-inboxes.
+**Approach:** every ad arrives already checked. Code finds definite violations, an LLM
+finds possible issues, and the reviewer makes every call. Status, decisions and history
+live in one place instead of in inboxes.
 
-## Core decisions
+## Decisions
 
 ### D1. AI assists, the human decides
 The tool flags. It never approves or rejects. Reviewers answer to regulators, so a human
-signs off on every asset.
+signs off on every ad.
 
-### D2. Two flag types, labelled by what kind of decision they need
-- **Check failed:** found by code. A yes/no fact ("mentions 5.99%, no APR disclosure found").
-  Quick to confirm.
-- **Needs judgment:** found by the LLM. An ambiguous call ("'everyone qualifies' may imply
-  guaranteed approval"). The reviewer has to read and decide.
+### D2. Two flag types, labelled by the kind of decision they need
+- **Check failed:** found by code. A yes/no fact ("5.99% with no APR"). Quick to confirm.
+- **Needs judgment:** found by the LLM. An ambiguous call ("'everyone qualifies' may
+  imply guaranteed approval"). The reviewer reads and decides.
 
-Why types and not tiers: tiers suggest the LLM flags matter less, so people skim them. But
-an LLM flag can be the most serious issue on the page. The type tells the reviewer how to
-treat a flag, not how important it is.
-
-Why no confidence score: an LLM's self-reported confidence is poorly calibrated. A
-precise-looking number with nothing behind it would mislead reviewers. The type already
-says how much to trust a flag.
+Types, not tiers: tiers suggest LLM flags matter less, but an LLM flag can be the most
+serious issue on the page. No confidence score: an LLM's self-reported confidence is
+poorly calibrated, and a precise-looking number would mislead reviewers.
 
 ### D3. Overflag on purpose
-Missing a real violation is worse than a false flag (A11). The flag types are what keep
-overflagging manageable.
+Missing a real violation is worse than a false flag (A11). The flag types and the
+dismissal data (D7) keep it manageable.
 
 ### D4. Every flag shows its evidence
-Each flag shows the rule, why it fired, and highlights the exact text. The LLM has to
-return the exact quote it is flagging, and code checks that the quote really appears in
-the asset. A flag whose quote can't be found is dropped. No invented evidence.
+Each flag names the rule, says why it fired, and highlights the exact text. The LLM must
+quote the text it flags, and code checks the quote is really in the ad. Otherwise the
+flag is dropped.
 
 ### D5. Resolve before approve
-- Check-failed flags must be fixed or dismissed (with a reason) before approval.
-- Needs-judgment flags must be acknowledged.
-
-Considered: a hard block (false positives stall real work, and people learn to click
-through), and no block (no record of why a flagged asset was approved). This middle path
-keeps the human in charge and leaves a record of every override.
+Check-failed flags must be dismissed with a reason; needs-judgment flags must be
+acknowledged or dismissed. A hard block would stall real work on false positives; no
+block would leave no record of why a flagged ad was approved.
 
 ### D6. Dismissal reasons are a pick list, plus a note
-Reasons: false positive / requirement met elsewhere / approved exception / fixed in this
-revision / other (note required). Structured, so they can be counted. Quick, because
-every required click costs reviewer time, which is the thing we're trying to save.
+False positive / requirement met elsewhere / approved exception / other (note required).
+Structured so they can be counted, and quick because every click costs reviewer time.
+"Fixed in this revision" isn't needed: a fixed problem simply doesn't fire on the next
+version (D19).
 
 ### D7. Count dismissals per rule
-A rule that is dismissed constantly is a bad rule. The reason tells you why: lots of
-"met elsewhere" means the check needs to see more of the material; lots of "false
-positive" means the rule itself needs fixing.
+A rule that's dismissed constantly is a bad rule, and the reason says why: lots of "met
+elsewhere" means the check can't see enough of the material; lots of "false positive"
+means the rule needs fixing.
 
-### D8. Rules: built-in set plus custom
-- Built-in rules from public regulation (A9). The team can **switch any rule off**, but
-  can't edit a built-in rule's logic, so a regulatory rule can't be quietly edited into
-  uselessness.
-- The team can **add its own rules**, in two kinds, and the kind decides the flag type:
-  - **Exact phrases** -> matched by code -> **check failed** (e.g. "no credit check")
-  - **Plain English** -> judged by the LLM -> **needs judgment** (e.g. "implies the loan
-    will improve the reader's lifestyle")
-  Both can be limited to certain products and channels.
-- **Changes apply to new checks only.** Flags already raised keep the rule they were
-  checked with, so the audit trail always matches what the reviewer saw (D9).
-- **A plain-English rule is user-written text that goes into the model's instructions.**
-  On the real product that's the trusted compliance team; on this public demo, it's
-  anyone. Rules are capped at 500 characters, and the usual safeguards still hold (the
-  model can only return flags, quotes are verified, code checks run regardless). On a real
-  deployment, writing rules would sit behind a permission.
-- **Every rule change is on the record:** switched on or off, added, deleted, with who,
-  when, and (for switching off) why. "Who switched off the APR rule, and when" is one of
-  the first things an examiner would ask. Switching a rule off asks for confirmation, more
-  firmly for a built-in regulatory rule.
-- **Reset demo restores the default rules,** so one visitor can't switch everything off
-  for the next.
+### D8. Rules: built-in plus custom
+- Built-in rules come from public regulation (A9). The team can **switch any rule off**
+  but can't edit a built-in rule's logic, so a regulatory rule can't be quietly edited
+  into uselessness.
+- The team can **add its own rules**, and the kind decides the flag type: **exact
+  phrases** are matched by code (check failed); **plain English** is judged by the LLM
+  (needs judgment). Both can be scoped to products and channels.
+- **Changes apply to new checks only.** Existing flags keep the rule they were checked
+  with, so the audit trail matches what the reviewer saw.
+- **A plain-English rule is user text in the model's instructions.** On a real deployment
+  writing rules would sit behind a permission; on the public demo, rules are capped at 500
+  characters and the usual safeguards hold (flags only, verified quotes, code checks).
+- **Every rule change is on the record** (who, when, and why it was switched off).
+  Switching a rule off asks for confirmation, more firmly for a regulatory rule.
 
 ### D9. Audit trail
-Flags, decisions and dismissals are stored against a specific version of the asset,
-exactly as they were at review time. The LLM may not give the same answer twice, so we
-keep what it actually said when the decision was made.
+Flags, decisions and dismissals are stored against a specific version of the ad, as they
+were at review time. The LLM may not give the same answer twice, so we keep what it said
+when the decision was made.
 
 ### D10. Intake: seeded queue plus a paste box
-A pre-loaded queue shows the reviewer workflow. A paste box lets anyone try their own
-copy. Submitters stay outside the tool for v1 (A6).
+A pre-loaded queue shows the workflow; "New check" lets anyone paste their own ad.
+Submitters stay outside the tool for v1 (A6).
 
 ### D11. Running an LLM on a public URL
-- The LLM is called only from the backend. The key lives in host environment variables
-  and never in the repo or the frontend.
-- The seeded queue is analysed once, when the data is loaded. Browsing costs nothing.
-- Results are cached by content hash: the same text gives the same flags at no cost.
-- Per-visitor rate limit, a global daily cap, a maximum input length, a maximum output
-  length, and a spend limit at the provider.
-- If a cap is hit or the API is down, the code checks still run and the UI says AI
-  checks are paused.
-- The endpoint returns only structured flags with verified quotes, so it can't be used
-  as a general-purpose chatbot.
+- The LLM is called only from the backend; the key never reaches the repo or the browser.
+- Results are stored by content hash: the same text gets the same flags, free.
+- 10 AI checks per visitor per hour, 300 a day, input and output caps, and a spend limit
+  at the provider. When a limit is hit or the API is down, code checks still run.
+- The endpoint returns only verified, structured flags, so it can't be used as a chatbot.
 
 ### D12. Prompt injection
-Affiliate content is untrusted text going into an LLM. To limit the risk:
-- The asset is clearly marked as untrusted data in the prompt.
-- Only structured output is accepted, with quote verification.
-- Injection-like text in an asset is itself flagged for judgment.
+Affiliate content is untrusted text going into an LLM.
+- It's fenced in a randomly named tag it can't close, and the model is told to report
+  embedded instructions, not follow them.
+- **A code backstop** flags injection phrasing aimed at a reviewer, and invisible
+  characters (zero-width and Unicode "tag" characters), decoding hidden text so the
+  reviewer can read it. A regex can't be talked out of matching. It deliberately ignores AI
+  as a product feature ("our AI assistant…"), and tests cover both sides.
+- **The model must return a verdict for every rule.** If it skips one, the ad gets an
+  "AI review incomplete" flag, so a model told to "report no issues" can't go quietly
+  silent.
 
-Quote verification stops invented flags but **not** suppressed ones. Two things cover
-that:
-- **The model must return a verdict for every rule** (violated or not, with a reason).
-  If it skips any rule, the ad gets an **"AI review incomplete"** flag naming them, so a
-  model that's been told to "report no issues" and goes quiet is visible to the reviewer
-  instead of looking like a clean result.
-- **The code checks can't be affected by injection**, including the backstop for injection
-  phrasing and hidden characters.
+This lowers the risk; it doesn't eliminate it. A manipulated model could still say "not
+violated" for every rule, which is why the AI never approves anything (D1).
 
-This lowers the risk; it doesn't eliminate it. A manipulated model could still answer
-every rule and say "not violated". That's why the AI never approves anything (D1).
-
-### D13. Stack
-React + FastAPI + Postgres, deployed as one service (FastAPI serves the built React app)
-with a managed Postgres. One thing to deploy means fewer ways for the deploy to fail.
-
-Hosted on Render. First choice was Railway (builds from the Dockerfile, doesn't sleep
-idle apps), but its sign-ups were disabled. Render builds the same Dockerfile, and the
-database is reachable only over Render's private network. The free instance sleeps when
-idle, so it moves to a paid Starter instance before submission: a grader opening the link
-days later shouldn't wait through a cold start.
+### D13. Stack and hosting
+React + FastAPI + Postgres as one service (FastAPI serves the built React app): one
+thing to deploy. On Render, after Railway's sign-ups turned out to be closed. A paid
+instance so a grader opening the link days later doesn't wait through a cold start.
 
 ### D14. Demo reset
-No auth (A17), so anyone can change the seeded data. A reset button re-seeds it, so one
-grader's clicks don't break the demo for the next.
+No login (A17), so anyone can change the demo. Reset restores the sample queue and the
+default rules, from stored AI results, at no cost.
 
 ### D15. Rule engine
-- **One flag per rule per asset, pointing at every occurrence.** Three "counselor"s are
-  one issue to fix, not three flags to resolve, but the reviewer sees all three
-  highlighted.
-- **Every percentage is treated as a rate** unless it's clearly something else ("95% of
-  borrowers", "10% down"). Overflagging, per D3.
-- **The APR has to be readable at a glance with the rate:** within ~40 characters and in
-  the same sentence. An APR in a footnote or another section doesn't count.
-- **Any down payment statement is a trigger term, including "no down payment"** (Reg Z
-  1026.24(d)(1)(i)). The down payment *disclosure* is only required for mortgages: Reg Z
-  says "as applicable", and personal loans have no down payment.
-- **Physical address = a street address or PO Box.** City, state and ZIP alone don't
-  count.
-- **LLM quotes must match the asset's text,** ignoring only case and spacing. Rewording
-  fails. The stored quote is the asset's own text, never the model's copy of it.
+- **One flag per rule per ad, pointing at every occurrence.** Three "counselor"s are one
+  issue to fix, with all three highlighted.
+- **Every percentage is treated as a rate** unless it's clearly not ("95% of borrowers",
+  "10% down").
+- **The APR must be readable at a glance with the rate:** within ~40 characters, same
+  sentence.
+- **Any down payment statement is a trigger term, including "no down payment"**; the
+  down payment *disclosure* is required only for mortgages ("as applicable").
+- **Physical address = street address or PO Box.**
+- **LLM quotes must match the ad's text,** ignoring only case and spacing.
 
-**Known limits, to revisit:**
-- "over 20 years of experience" reads as a repayment term (a known false positive,
-  documented in the tests).
-- Ads offering both fixed and adjustable mortgages get the "fixed before ARM" flag even
-  though order doesn't matter for them (1026.24(i)(1)(iii)). The reviewer dismisses
-  these; the LLM could separate the two cases.
-- The "is this percentage a rate?" test is a word list, and could be smarter.
-- The taxes-and-insurance rule assumes every mortgage is first-lien (A22).
+Known limits: "over 20 years of experience" reads as a repayment term; ads offering both
+fixed and adjustable mortgages get the "fixed before ARM" flag; the "is this a rate?"
+test is a word list; the taxes-and-insurance rule assumes first-lien mortgages (A22).
 
 ### D16. LLM checks
-- **Claude Opus 5.5, one call per asset** covering every judgment rule that applies.
-  Cheaper and faster than one call per rule, and the model sees the whole ad at once.
-- **The model only reports; code decides what counts.** Findings must name a rule the
-  model was given and quote text that exists in the asset (D4). Everything else is
-  dropped, and the UI says how many were dropped.
-- **Untrusted content is fenced** inside a randomly named tag it can't close, and the
-  prompt tells the model to report embedded instructions, not follow them. A code rule
-  catches the obvious injection phrases too, because text that hijacks the model could
-  also suppress the model's own injection flag (D12). It also catches invisible
-  characters (zero-width, Unicode "tag" characters), which can hide instructions from a
-  human reader but not from a model. The code patterns only target text aimed at a
-  reviewer, never AI as a product feature ("our AI assistant compares offers"), so it
-  doesn't flood reviewers; the LLM rule covers subtler attempts. Tests guard both sides:
-  attacks it must catch and normal copy it must not flag.
-- **A UDAAP rule for misleading claims** ("guaranteed approval", "everyone qualifies",
-  false urgency) joins the judgment rules. It wasn't in the first rule table, but it's the
-  most common marketing-compliance problem.
-- **Limits are visible:** "8 of 10 AI checks left this hour". When they run out, the
-  code checks still run and the UI says so.
-- **No "re-run" on unchanged text.** The same text returns the stored result, free and
-  without using the limit. The model can answer differently on a second run, and two
-  answers for one unchanged ad is exactly what the audit trail (D9) exists to prevent.
-  New text means a new check.
-- **Visitors are counted by IP address, stored hashed.** The forwarded-for header can be
-  forged, but that only buys more per-visitor quota; the global daily cap is what bounds
-  the cost.
-- **If the model declines** (a safety classifier), the request falls back to Anthropic's
-  recommended fallback model instead of failing.
+- **Claude Opus 5.5, one call per ad** for every judgment rule that applies.
+- **The model only reports; code decides what counts.** Findings must name a rule it was
+  given and quote real text (D4); the UI says how many were discarded.
+- **A UDAAP rule for misleading claims** ("guaranteed approval", false urgency): the most
+  common marketing-compliance problem.
+- **Limits are visible** ("8 of 10 AI checks left this hour").
+- **No re-run on unchanged text:** two answers for one unchanged ad is what the audit
+  trail exists to prevent.
+- **Visitors are counted by hashed IP.** Forging the header only buys per-visitor quota;
+  the daily cap bounds the cost.
+- **If the model declines**, the request falls back to Anthropic's recommended model.
+- **"Rate shown more prominently than the APR" is off in v1.** It double-flagged what the
+  code rule already catches, and prominence is visual, which text can't show (A13).
 
-**Follow-up:** code and LLM checks can flag the same problem twice. In testing, an ad
-with "5.99%" and no APR got both the code flag (rate not stated as APR) and the LLM flag
-(rate shown more prominently than the APR). Narrowing the LLM rule's wording didn't hold
-(see D18), so that rule is now off. The general fix is to merge a code flag and an LLM
-flag that point at the same text into one.
-
-### D17. Review workflow
-- **Every check creates a queue item.** Pasting an ad in "New check" stores it like any
-  other submission, so nothing is reviewed off the record.
-- **Check-failed flags are dismissed with a reason; judgment flags can also be
-  acknowledged.** A definite violation can't just be noted: it gets a reason on record,
-  or the ad is rejected.
-- **Resolutions can be undone** until the ad is decided. Undo is logged too.
-- **Approve is blocked until every flag is resolved; reject is always available** (D5).
-  Once decided, the ad and its flags are locked.
-- **"Fixed in this revision" isn't a dismissal reason in v1,** because there's no
-  revision loop yet. It comes back with re-review.
-- **Every action lands in an append-only audit trail:** who, what, when, and the reason
-  and note. With no login (A17), actions are recorded as "Demo reviewer"; a real login
-  only changes that name.
-- **The demo queue seeds itself** on first start (8 sample ads, AI-checked once, in the
-  background so the app serves immediately). Reset re-seeds from the stored AI results,
-  so it costs nothing.
-- **Throughput numbers live on their own Insights page,** because reviewers and leads need
-  different things: a reviewer needs the queue; a lead needs "are we keeping up, and are
-  the rules any good". The queue keeps one line (ads waiting, the oldest, a link).
-  Insights shows, for the last 24 hours, 7 days or all time: ads waiting, median time
-  from submission to decision, approved/rejected, flags per ad, the share of resolved
-  flags that were dismissed (the cost of overflagging, D3), and the rules reviewers
-  override most. All of it comes from the audit trail.
-- **Rule health is a sortable table of every rule that fired:** type, flagged, dismissed,
-  dismiss rate and top dismissal reason. Click a column to sort (numbers high-to-low
-  first), again to reverse, a third time to go back to the default ranking (rules with
-  enough flags first, then most dismissed). The top reason says what to do: "false
-  positive" means the rule may be too broad; "met elsewhere" means it can't see the linked
-  page, which isn't a rule problem; "approved exception" is a question for legal. Rules
-  with fewer than 3 flags show "too few to tell": a 100% rate on one flag is noise.
-- **Row actions sit in a labelled ⋯ menu** (view flagged ads, view rule, switch off,
-  delete a custom rule), with the destructive ones separated. The rule name links
-  straight to its flagged ads, because looking at the ads comes before acting: a rule can
-  be right even when reviewers dismiss it.
-- **Team-wide on purpose.** The brief is about the team's throughput. Per-reviewer speed
-  would push people to rush reviews; if leads need per-person numbers later, the framing
-  is workload balancing ("who has the most waiting"). With logins, Insights would be
-  lead-only.
-- **The Rules page shows how often each rule fires and how often it's dismissed** (D7),
-  so a rule reviewers keep overriding is easy to spot.
+### D17. Review workflow and Insights
+- **Every check creates a queue item**, so nothing is reviewed off the record.
+- **Resolutions can be undone** until the ad is decided. **Approve needs every flag
+  resolved; reject is always available.** Decided ads are locked.
+- **Every action lands in an append-only audit trail** with who, what, when, and why.
+  With no login, actions are recorded as "Demo reviewer".
+- **The queue is first in, first out:** oldest first, with how long each ad has waited.
+  Newest-first would let old ads sink, which is the backlog problem itself.
+- **Throughput numbers live on their own Insights page:** a reviewer needs the queue, a
+  lead needs "are we keeping up, and are the rules any good". Backlog, median time to
+  decision, approved/rejected, flags per ad and dismissal rate, for 24 hours, 7 days or
+  all time, all from the audit trail.
+- **Rule health is a sortable table** of every rule that fired: flagged, dismissed,
+  dismiss rate, top reason, with actions in a ⋯ menu. The top reason says what to do
+  ("may be too broad" / "missing context" / "policy question"). Under 3 flags shows "too
+  few to tell".
+- **Team-wide on purpose.** Per-reviewer speed would push people to rush. With logins,
+  Insights would be lead-only.
 
 ### D18. Evaluation
-`backend/eval/` scores the checks against 15 hand-labelled ads: the 8 demo-queue ads,
-traps that look risky but are fine, problems phrased to slip past obvious patterns, and a
-known false positive. Each rule is labelled expected, acceptable either way, or wrong to
-fire. Results are in `backend/eval/RESULTS.md`.
+`backend/eval/` scores the checks against 15 hand-labelled ads, including traps that look
+risky but are fine, problems phrased to slip past patterns, and a known false positive.
+Results: `backend/eval/RESULTS.md`.
 
-What the first run showed:
-- **Code checks:** caught every expected flag, with one false flag (the known "over 20
-  years" one, kept in the set so it stays visible). Caveat: the code rules and these labels
-  were written together, so a clean score is expected, not independent proof.
-- **AI checks:** caught every expected flag, with 4 false flags. Two came from one rule,
-  "rate shown more prominently than the APR". Prominence is visual and can't be judged from
-  text (A13), the same reason Reg Z's "clear and conspicuous" rules are out of scope, so
-  that rule is **off in v1**.
-- **The AI is not consistent from run to run.** It caught the injection hidden in invisible
-  characters in the evaluation, but missed the same ad on the live site. The code backstop
-  caught it both times. This is the case for keeping a deterministic layer and for storing
-  the result a reviewer acted on (D9).
-- **One label changed, with a reason:** "95% of borrowers recommend us" was labelled clean,
-  but the AI flagged it as a claim needing substantiation. That's a fair point, so it's now
-  "acceptable either way". Labels only change for a reason like this, never to raise the
-  score.
+| Checks | Caught | Missed | False flags |
+|---|---|---|---|
+| Code | 15 of 15 | 0 | 1 (the known "over 20 years" one) |
+| AI | 10 of 11 | 1 | 4 |
+
+- **The AI varies between runs.** An earlier run caught 11 of 11; this one missed "not
+  identified as an ad" on one email. It caught the hidden-text injection here but missed it
+  once on the live site; the code backstop caught it every time. That's the case for the
+  deterministic layer and for "the AI never decides alone".
+- **The subject-line rule is the noisiest:** it falsely flagged the same compliant email
+  on both runs. Next to tune.
+- **The code score isn't independent proof:** the rules and labels were written together.
+- **Labels change only for a principled reason**, never to raise the score. One did ("95%
+  of borrowers recommend us" needs substantiation, so flagging it is fair).
+
+### D19. Revision loop
+The email back-and-forth is probably where the most time goes, so v1 closes the loop:
+- **Request changes** sends the ad back to the submitter; **the open flags are the fix
+  list** (the note is optional). Its flags lock while it's with the submitter.
+- **The revision is checked again as version 2**, so decisions always point at the exact
+  text reviewed. With no submitter portal (A6), the demo submits it from the ad's page.
+- **Re-review only what changed:** a dismissed or acknowledged flag **carries over** if
+  the same rule fires on the same text; if the text changed, it reopens. A summary shows
+  fixed / still flagged / new / carried over.
+- **Only the current version's flags gate approval.**
 
 ## Not in v1, and why
 
 | Cut | Why |
 |---|---|
-| Submitter portal (marketing / affiliates submit directly) | Content arrives as it does today; the bottleneck being solved is review |
-| Request changes / revision loop | v1 covers one review pass end to end; doing that well matters more than a shallow full loop |
-| Re-review: diffs between versions, carrying over dismissals | Depends on the revision loop. Probably the biggest throughput win after v1. |
-| Auth and roles | Not the interesting part of this problem; the reset button covers the demo |
-| Excel import of the existing tracker | Matters for adoption, not for the throughput of the review itself |
-| Images and video | Text carries most of the rule triggers |
-| Per-reviewer dismissal stats | Can feel like surveillance to the team you need to win over |
-| Editable dismissal reasons, per-type reason lists | A fixed list is enough to learn from |
-| Per-visitor sandbox | The reset button is enough for a demo |
-| Database migrations (Alembic) | Tables are created at startup; fine while the schema is small and demo data is re-seeded |
-| Running the AI twice and combining results, or a separate injection classifier | Doubles the cost per check; per-rule verdicts plus the code backstop cover v1 |
-| Merging a code flag and an LLM flag that point at the same text | The overlapping rule is off for now; the general fix needs flag-matching logic |
-| Editing a custom rule, re-scoping built-in rules, and a history of rule changes | Delete and re-add covers v1; rule-change history belongs in the audit trail once there are real users |
+| Excel import of the existing tracker | Two jobs: adoption (nobody re-types hundreds of rows) and proof (its dates are the "before" baseline for Insights). Cut for time: rushed file handling is fragile and bulk AI checks need a cost cap. First thing to build next. |
+| Submitter portal, and a word-level diff between versions | The revision loop works without them; a portal is the next step for adoption |
+| Per-flag comments and suggested edits | Reviewers deliberately can't edit ad copy (separation of duties: marketing writes, compliance approves). Next: per-flag comments to the submitter, and suggested wording the submitter accepts. |
+| Images and video | Images break quote verification. Next: OCR into the same pipeline, a vision model for visual rules (which unlocks the prominence rule and "clear and conspicuous"), and text in images treated as untrusted. |
+| Auth and roles | Not the interesting part of this problem; reset covers the demo |
+| Merging a code flag and an LLM flag on the same text | The overlapping rule is off for now |
+| Running the AI twice, or a separate injection classifier | Doubles cost; per-rule verdicts plus the code backstop cover v1 |
+| Editing custom rules, re-scoping built-in rules | Delete and re-add covers v1 |
+| Per-reviewer stats | Can feel like surveillance to the team you need to win over |
+| Editable dismissal reasons | A fixed list is enough to learn from |
+| Database migrations | Tables are created at startup; fine while the schema is small |
 
 ## Tradeoffs
 
-- Code checks vs. LLM: code is free, instant, explainable, testable and consistent, but
-  it misses new phrasings and fires on silly matches. The LLM handles meaning but costs
-  money, can vary between runs, and is open to injection. Using both, with clear labels,
-  gets the strengths of each.
-- Overflagging vs. reviewer fatigue: handled through the flag types and the dismissal
-  data, not by suppressing flags.
-
-## TBD before submission
-
-- [ ] **Throughput claim:** what I claim and how I support it
-- [ ] Evaluation results on the labelled mock data (first run in D18; re-run after turning off the prominence rule)
-- [x] Which LLM model, and why (D16: Claude Opus 5.5)
-- [ ] Upgrade Render to Starter (no idle sleep); confirm the free database outlasts the review window
-
-## How I used AI
-
-_TODO: write this myself, honestly, before submission._
+- **Code vs. LLM:** code is free, instant, testable and consistent, but misses new
+  phrasings. The LLM handles meaning but costs money, varies between runs and is open to
+  injection. Both, clearly labelled, gets the strengths of each.
+- **Overflagging vs. reviewer fatigue:** handled with the flag types and dismissal data,
+  not by suppressing flags.
