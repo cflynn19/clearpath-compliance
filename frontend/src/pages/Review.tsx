@@ -6,9 +6,9 @@ import { countHidden, stripHidden } from '../hidden'
 import { Highlighted } from '../Highlighted'
 import { href } from '../router'
 
-const GROUPS: { type: FlagType; label: string; icon: string; hint: string }[] = [
-  { type: 'check_failed', label: 'Check failed', icon: '✕', hint: 'Found by code: a definite rule violation.' },
-  { type: 'needs_judgment', label: 'Needs judgment', icon: '?', hint: 'Found by AI: a possible issue for you to decide.' },
+const GROUPS: { type: FlagType; label: string; icon: string }[] = [
+  { type: 'check_failed', label: 'Check failed', icon: '✕' },
+  { type: 'needs_judgment', label: 'Needs judgment', icon: '?' },
 ]
 
 function displayQuote(quote: string) {
@@ -128,6 +128,7 @@ export function Review({ id, config, onChange }: { id: number; config: ReviewCon
             </div>
           )}
           {GROUPS.map((g) => {
+            // The legend under the ad explains the two types, so the groups don't repeat it.
             const group = asset.flags.map((f, i) => ({ f, i })).filter(({ f }) => f.type === g.type)
             if (!group.length) return null
             const openCount = group.filter(({ f }) => f.status === 'open').length
@@ -137,7 +138,6 @@ export function Review({ id, config, onChange }: { id: number; config: ReviewCon
                   <span className={`badge ${g.type}`}>{g.icon}</span> {g.label}
                   <em>{openCount ? `${openCount} open` : 'all resolved'}</em>
                 </h2>
-                <p className="hint">{g.hint}</p>
                 {group.map(({ f, i }) => (
                   <FlagCard
                     key={f.id}

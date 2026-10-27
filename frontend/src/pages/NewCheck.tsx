@@ -46,10 +46,7 @@ export function NewCheck() {
       <div className="page-head">
         <div>
           <h1>New check</h1>
-          <p className="muted">
-            Paste marketing copy to check it before it goes live. Code finds definite rule violations, AI flags possible
-            issues, and it lands in the queue for review.
-          </p>
+          <p className="muted">Paste marketing copy to check it before it goes live.</p>
         </div>
       </div>
 
@@ -134,7 +131,6 @@ export function NewCheck() {
 
         <aside className="card side-help">
           <div className="eyebrow">Try an example</div>
-          <p className="muted small">Fills the form with a sample ad. Edit it, then check it.</p>
           <div className="example-list">
             {EXAMPLES.map((ex) => (
               <button
@@ -149,17 +145,12 @@ export function NewCheck() {
           </div>
           <div className="eyebrow">How flags work</div>
           <p className="small">
-            <span className="badge check_failed inline">✕</span> <b>Check failed</b>: code found a definite violation, like
-            a rate with no APR. Dismiss it with a reason, or reject the ad.
+            <span className="badge check_failed inline">✕</span> <b>Check failed</b>: a definite violation, found by code.
           </p>
           <p className="small">
-            <span className="badge needs_judgment inline">?</span> <b>Needs judgment</b>: AI found a possible issue, like a
-            misleading claim. Acknowledge it or dismiss it.
+            <span className="badge needs_judgment inline">?</span> <b>Needs judgment</b>: a possible issue, found by AI.
           </p>
-          <p className="muted small fineprint">
-            Rules are illustrative, based on public federal regulations (Reg Z, CAN-SPAM, UDAAP). Not legal advice.
-            Re-checking unchanged text reuses the earlier AI result.
-          </p>
+          <p className="muted small fineprint">Illustrative rules from public regulations. Not legal advice.</p>
         </aside>
       </div>
     </>
