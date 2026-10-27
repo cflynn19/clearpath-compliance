@@ -221,6 +221,18 @@ The email back-and-forth is probably where the most time goes, so v1 closes the 
 | Editable dismissal reasons | A fixed list is enough to learn from |
 | Database migrations | Tables are created at startup; fine while the schema is small |
 
+## With another week
+
+1. **Excel import:** adoption on day one, and the "before" dates that turn the throughput
+   claim into a measurement.
+2. **Submitter portal with per-flag comments and suggested edits:** cuts the
+   back-and-forth at the source.
+3. **Tune the noisiest rules** with the evaluation and dismissal data (the subject-line
+   rule first), and add the newer demo ads to the labelled set.
+4. **Logins and roles:** real names in the audit trail; Insights and rule changes for
+   leads only.
+5. **Images:** OCR into the same pipeline, and a vision model for the visual rules.
+
 ## Tradeoffs
 
 - **Code vs. LLM:** code is free, instant, testable and consistent, but misses new
