@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { CHANNELS, PRODUCTS, STATUS_LABEL } from '../api'
-import type { AssetStatus, AssetSummary } from '../api'
+import type { AssetStatus, AssetSummary, Channel, Product } from '../api'
 import { timeAgo } from '../format'
 import { href } from '../router'
 
@@ -26,11 +26,31 @@ function FlagSummary({ a }: { a: AssetSummary }) {
 
 export function Queue({ assets }: { assets: AssetSummary[] | null }) {
   const [filter, setFilter] = useState<AssetStatus | 'all'>('in_review')
+  const [product, setProduct] = useState<Product | ''>('')
+  const [channel, setChannel] = useState<Channel | ''>('')
+  const [search, setSearch] = useState('')
+  const [failedOnly, setFailedOnly] = useState(false)
 
   if (assets === null) return <p className="muted">Loading the queue…</p>
 
-  const shown = assets.filter((a) => filter === 'all' || a.status === filter)
-  const count = (key: AssetStatus | 'all') => assets.filter((a) => key === 'all' || a.status === key).length
+  // Status tabs count everything that matches the other filters.
+  const q = search.trim().toLowerCase()
+  const matching = assets.filter(
+    (a) =>
+      (!product || a.product === product) &&
+      (!channel || a.channel === channel) &&
+      (!failedOnly || a.open_failed > 0) &&
+      (!q || a.title.toLowerCase().includes(q) || a.submitter.toLowerCase().includes(q)),
+  )
+  const shown = matching.filter((a) => filter === 'all' || a.status === filter)
+  const count = (key: AssetStatus | 'all') => matching.filter((a) => key === 'all' || a.status === key).length
+  const filtered = Boolean(product || channel || failedOnly || q)
+  const clear = () => {
+    setProduct('')
+    setChannel('')
+    setSearch('')
+    setFailedOnly(false)
+  }
 
   return (
     <>
@@ -45,6 +65,41 @@ export function Queue({ assets }: { assets: AssetSummary[] | null }) {
         <a className="btn primary" href={href.new}>
           New check
         </a>
+      </div>
+
+      <div className="filters">
+        <input
+          type="search"
+          className="search"
+          placeholder="Search title or submitter"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <select value={product} onChange={(e) => setProduct(e.target.value as Product | '')}>
+          <option value="">All products</option>
+          {Object.entries(PRODUCTS).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+        <select value={channel} onChange={(e) => setChannel(e.target.value as Channel | '')}>
+          <option value="">All channels</option>
+          {Object.entries(CHANNELS).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+        <label className="toggle">
+          <input type="checkbox" checked={failedOnly} onChange={(e) => setFailedOnly(e.target.checked)} />
+          Has failed checks
+        </label>
+        {filtered && (
+          <button className="btn small ghost" onClick={clear}>
+            Clear filters
+          </button>
+        )}
       </div>
 
       <div className="tabs">
@@ -66,7 +121,14 @@ export function Queue({ assets }: { assets: AssetSummary[] | null }) {
               </p>
             </>
           ) : (
-            <p className="muted">Nothing here.</p>
+            <p className="muted">
+              {filtered ? 'No ads match these filters.' : 'Nothing here.'}{' '}
+              {filtered && (
+                <button className="btn small ghost" onClick={clear}>
+                  Clear filters
+                </button>
+              )}
+            </p>
           )}
         </div>
       ) : (

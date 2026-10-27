@@ -159,6 +159,19 @@ export const reopenFlag = (id: number) => request<AssetDetail>(`/api/flags/${id}
 export const decide = (id: number, decision: 'approve' | 'reject', note: string) =>
   request<AssetDetail>(`/api/assets/${id}/decision`, post({ decision, note }))
 export const getRules = () => request<Rule[]>('/api/rules')
+
+export interface NewRule {
+  name: string
+  kind: 'phrases' | 'instruction'
+  phrases: string[]
+  instruction: string
+  products: Product[]
+  channels: Channel[]
+}
+export const createRule = (rule: NewRule) => request<Rule[]>('/api/rules', post(rule))
+export const toggleRule = (id: string, enabled: boolean) =>
+  request<Rule[]>(`/api/rules/${id}`, { ...post({ enabled }), method: 'PATCH' })
+export const deleteRule = (id: string) => request<Rule[]>(`/api/rules/${id}`, { method: 'DELETE' })
 export const getReviewConfig = () => request<ReviewConfig>('/api/review-config')
 export const resetDemo = () => request<{ seeded: number }>('/api/demo/reset', post())
 

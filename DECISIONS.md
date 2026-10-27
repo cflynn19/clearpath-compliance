@@ -64,10 +64,23 @@ A rule that is dismissed constantly is a bad rule. The reason tells you why: lot
 positive" means the rule itself needs fixing.
 
 ### D8. Rules: built-in set plus custom
-- Built-in rules from public regulation (A9).
-- The team can add its own. A phrase or pattern rule counts as **check failed**; a
-  plain-English rule is evaluated by the LLM and counts as **needs judgment**. The type
-  follows from how the rule is checked.
+- Built-in rules from public regulation (A9). The team can **switch any rule off**, but
+  can't edit a built-in rule's logic, so a regulatory rule can't be quietly edited into
+  uselessness.
+- The team can **add its own rules**, in two kinds, and the kind decides the flag type:
+  - **Exact phrases** -> matched by code -> **check failed** (e.g. "no credit check")
+  - **Plain English** -> judged by the LLM -> **needs judgment** (e.g. "implies the loan
+    will improve the reader's lifestyle")
+  Both can be limited to certain products and channels.
+- **Changes apply to new checks only.** Flags already raised keep the rule they were
+  checked with, so the audit trail always matches what the reviewer saw (D9).
+- **A plain-English rule is user-written text that goes into the model's instructions.**
+  On the real product that's the trusted compliance team; on this public demo, it's
+  anyone. Rules are capped at 500 characters, and the usual safeguards still hold (the
+  model can only return flags, quotes are verified, code checks run regardless). On a real
+  deployment, writing rules would sit behind a permission.
+- **Reset demo restores the default rules,** so one visitor can't switch everything off
+  for the next.
 
 ### D9. Audit trail
 Flags, decisions and dismissals are stored against a specific version of the asset,
@@ -234,6 +247,7 @@ What the first run showed:
 | Database migrations (Alembic) | Tables are created at startup; fine while the schema is small and demo data is re-seeded |
 | Stronger injection hardening: the model returns a verdict for every rule (so suppressing a flag means lying about a specific rule, not quietly omitting it), or runs twice and combines results | Costs more per check; the code backstop covers the obvious cases for v1 |
 | Merging a code flag and an LLM flag that point at the same text | The overlapping rule is off for now; the general fix needs flag-matching logic |
+| Editing a custom rule, re-scoping built-in rules, and a history of rule changes | Delete and re-add covers v1; rule-change history belongs in the audit trail once there are real users |
 
 ## Tradeoffs
 

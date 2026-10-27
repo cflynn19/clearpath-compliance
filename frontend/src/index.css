@@ -347,6 +347,38 @@ h1 {
 
 /* --- Queue ------------------------------------------------------------------------- */
 
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.filters .search {
+  flex: 1 1 240px;
+}
+
+.filters select {
+  width: auto;
+  min-width: 160px;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.toggle input {
+  width: auto;
+  margin: 0;
+}
+
 .tabs {
   display: flex;
   gap: 6px;
@@ -1056,6 +1088,97 @@ textarea {
 
 .warn {
   color: var(--fail);
+}
+
+.chip.custom {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.switch input {
+  width: auto;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.rule-form {
+  margin-bottom: 24px;
+}
+
+.rule-form .kind {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.rule-form .kind legend {
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.kind-option {
+  display: flex !important;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.kind-option.on {
+  border-color: var(--accent);
+  background: #faf9ff;
+}
+
+.kind-option input {
+  width: auto;
+  margin: 3px 0 0;
+}
+
+.kind-option small {
+  display: block;
+  margin-top: 2px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.field-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.checks {
+  display: grid;
+  gap: 4px;
+}
+
+/* Beats the grid layout that .compose gives every label. */
+.compose .checks .toggle {
+  display: flex;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.rule-form {
+  max-width: 820px;
 }
 
 /* --- Small screens ------------------------------------------------------------------ */

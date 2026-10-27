@@ -8,6 +8,7 @@ import threading
 from datetime import datetime, timedelta, timezone
 
 from .. import analysis
+from ..rules import registry
 from ..rules.models import Asset, Channel, Product
 from . import store
 
@@ -143,6 +144,8 @@ def seed_if_empty() -> None:
 
 
 def reset() -> int:
+    """Back to the demo starting point: default rules and the sample queue."""
     with SEED_LOCK:
+        registry.clear()
         store.clear()
     return seed()

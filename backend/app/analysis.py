@@ -6,8 +6,9 @@ from typing import Literal
 from pydantic import BaseModel
 
 from .llm import checker, store
+from .rules import registry
 from .rules.engine import run_code_checks
-from .rules.models import Asset, Flag
+from .rules.models import Asset, Flag, JudgmentRule
 
 
 class AIStatus(BaseModel):
@@ -25,13 +26,16 @@ class AnalyzeResult(BaseModel):
 
 def analyze(asset: Asset, visitor: str, enforce_limits: bool = True) -> AnalyzeResult:
     """enforce_limits=False is for server-side work only (seeding the demo queue)."""
-    code_flags = run_code_checks(asset)
-    ai_flags, ai = _ai_checks(asset, visitor, enforce_limits)
+    code_rules, judgment_rules = registry.load()
+    code_flags = run_code_checks(asset, code_rules)
+    ai_flags, ai = _ai_checks(asset, visitor, enforce_limits, judgment_rules)
     flags = sorted(code_flags + ai_flags, key=lambda f: f.spans[0].start if f.spans else -1)
     return AnalyzeResult(flags=flags, ai=ai)
 
 
-def _ai_checks(asset: Asset, visitor: str, enforce_limits: bool) -> tuple[list[Flag], AIStatus]:
+def _ai_checks(
+    asset: Asset, visitor: str, enforce_limits: bool, judgment_rules: list[JudgmentRule]
+) -> tuple[list[Flag], AIStatus]:
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return [], AIStatus(
             status="disabled",
@@ -39,7 +43,7 @@ def _ai_checks(asset: Asset, visitor: str, enforce_limits: bool) -> tuple[list[F
             remaining_this_hour=0,
         )
 
-    rules = checker.applicable_rules(asset)
+    rules = checker.applicable_rules(asset, judgment_rules)
     key = checker.cache_key(asset, rules)
 
     # Unchanged text: reuse the stored answer. Free, and it doesn't use up the limit.

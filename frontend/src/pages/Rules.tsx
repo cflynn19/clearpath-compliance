@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { CHANNELS, getRules, PRODUCTS } from '../api'
-import type { FlagType, ReviewConfig, Rule } from '../api'
+import type { FormEvent } from 'react'
+import { CHANNELS, createRule, deleteRule, getRules, PRODUCTS, toggleRule } from '../api'
+import type { Channel, FlagType, NewRule, Product, ReviewConfig, Rule } from '../api'
 import { shortReason } from '../format'
 
 const SECTIONS: { type: FlagType; title: string; blurb: string }[] = [
@@ -40,10 +41,27 @@ function Stats({ rule, reasons }: { rule: Rule; reasons: Record<string, string> 
 
 export function Rules({ config }: { config: ReviewConfig | null }) {
   const [rules, setRules] = useState<Rule[] | null>(null)
+  const [adding, setAdding] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     getRules().then(setRules).catch(() => setRules([]))
   }, [])
+
+  async function act(fn: () => Promise<Rule[]>) {
+    setBusy(true)
+    setError(null)
+    try {
+      setRules(await fn())
+      return true
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+      return false
+    } finally {
+      setBusy(false)
+    }
+  }
 
   if (!rules) return <p className="muted">Loading rules…</p>
   const reasons = config?.dismiss_reasons ?? {}
@@ -54,11 +72,28 @@ export function Rules({ config }: { config: ReviewConfig | null }) {
         <div>
           <h1>Rules</h1>
           <p className="muted">
-            What every ad is checked against, and why. A rule that reviewers dismiss most of the time is a rule worth
-            fixing. Based on public federal regulations; illustrative, not legal advice.
+            What every ad is checked against, and why. Switch rules off, or add ClearPath's own. Changes apply to new
+            checks; flags already raised keep the rule they were checked with. A rule reviewers dismiss most of the
+            time is one worth fixing.
           </p>
         </div>
+        {!adding && (
+          <button className="btn primary" onClick={() => setAdding(true)}>
+            Add rule
+          </button>
+        )}
       </div>
+
+      {error && <p className="error">{error}</p>}
+      {adding && (
+        <RuleForm
+          busy={busy}
+          onCancel={() => setAdding(false)}
+          onSubmit={async (rule) => {
+            if (await act(() => createRule(rule))) setAdding(false)
+          }}
+        />
+      )}
 
       {SECTIONS.map((s) => (
         <section key={s.type} className="rule-section">
@@ -73,14 +108,28 @@ export function Rules({ config }: { config: ReviewConfig | null }) {
                 <div key={r.id} className={`card rule${r.enabled ? '' : ' off'}`}>
                   <div className="rule-head">
                     <strong>
-                      {r.name} {!r.enabled && <span className="chip">Off in v1</span>}
+                      {r.name} {r.source === 'custom' && <span className="chip custom">Custom</span>}
                     </strong>
-                    <span className="cite">{r.citation}</span>
+                    <label className="switch" title={r.enabled ? 'Switch off' : 'Switch on'}>
+                      <input
+                        type="checkbox"
+                        checked={r.enabled}
+                        disabled={busy}
+                        onChange={(e) => act(() => toggleRule(r.id, e.target.checked))}
+                      />
+                      <span>{r.enabled ? 'On' : 'Off'}</span>
+                    </label>
                   </div>
+                  <span className="cite">{r.citation}</span>
                   <p>{r.description}</p>
                   <div className="rule-foot">
                     <span className="muted small">{scope(r)}</span>
                     <Stats rule={r} reasons={reasons} />
+                    {r.source === 'custom' && (
+                      <button className="btn small ghost" disabled={busy} onClick={() => act(() => deleteRule(r.id))}>
+                        Delete
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -88,5 +137,142 @@ export function Rules({ config }: { config: ReviewConfig | null }) {
         </section>
       ))}
     </>
+  )
+}
+
+function Checks<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: Record<T, string>
+  value: T[]
+  onChange: (v: T[]) => void
+}) {
+  return (
+    <div className="checks">
+      {(Object.entries(options) as [T, string][]).map(([key, label]) => (
+        <label key={key} className="toggle">
+          <input
+            type="checkbox"
+            checked={value.includes(key)}
+            onChange={(e) => onChange(e.target.checked ? [...value, key] : value.filter((v) => v !== key))}
+          />
+          {label}
+        </label>
+      ))}
+    </div>
+  )
+}
+
+function RuleForm({
+  busy,
+  onCancel,
+  onSubmit,
+}: {
+  busy: boolean
+  onCancel: () => void
+  onSubmit: (rule: NewRule) => void
+}) {
+  const [name, setName] = useState('')
+  const [kind, setKind] = useState<NewRule['kind']>('phrases')
+  const [phrases, setPhrases] = useState('')
+  const [instruction, setInstruction] = useState('')
+  const [products, setProducts] = useState<Product[]>([])
+  const [channels, setChannels] = useState<Channel[]>([])
+
+  const phraseList = phrases
+    .split('\n')
+    .map((p) => p.trim())
+    .filter(Boolean)
+  const ready = name.trim() && (kind === 'phrases' ? phraseList.length > 0 : instruction.trim().length >= 10)
+
+  function submit(e: FormEvent) {
+    e.preventDefault()
+    if (ready) onSubmit({ name, kind, phrases: phraseList, instruction, products, channels })
+  }
+
+  return (
+    <form className="card compose rule-form" onSubmit={submit}>
+      <div className="eyebrow">New rule</div>
+      <label>
+        Name
+        <input
+          value={name}
+          maxLength={80}
+          placeholder="e.g. No “no credit check” claims"
+          onChange={(e) => setName(e.target.value)}
+        />
+      </label>
+
+      <fieldset className="kind">
+        <legend>How should it be checked?</legend>
+        <label className={`kind-option${kind === 'phrases' ? ' on' : ''}`}>
+          <input type="radio" checked={kind === 'phrases'} onChange={() => setKind('phrases')} />
+          <span>
+            <b>
+              <span className="badge check_failed inline">✕</span> Exact phrases
+            </b>
+            <small>Code flags any of these words, every time. Raises “check failed”.</small>
+          </span>
+        </label>
+        <label className={`kind-option${kind === 'instruction' ? ' on' : ''}`}>
+          <input type="radio" checked={kind === 'instruction'} onChange={() => setKind('instruction')} />
+          <span>
+            <b>
+              <span className="badge needs_judgment inline">?</span> Plain-English rule
+            </b>
+            <small>The AI judges each ad against it. Raises “needs judgment”.</small>
+          </span>
+        </label>
+      </fieldset>
+
+      {kind === 'phrases' ? (
+        <label>
+          Phrases <span className="optional">one per line, case doesn't matter</span>
+          <textarea
+            rows={4}
+            value={phrases}
+            placeholder={'no credit check\nguaranteed approval'}
+            onChange={(e) => setPhrases(e.target.value)}
+          />
+        </label>
+      ) : (
+        <label>
+          Rule <span className="optional">{instruction.length}/500</span>
+          <textarea
+            rows={3}
+            maxLength={500}
+            value={instruction}
+            placeholder="e.g. Implies that taking a loan will improve the reader's lifestyle or happiness."
+            onChange={(e) => setInstruction(e.target.value)}
+          />
+        </label>
+      )}
+
+      <div className="row">
+        <div>
+          <span className="field-label">
+            Products <span className="optional">none = all</span>
+          </span>
+          <Checks options={PRODUCTS} value={products} onChange={setProducts} />
+        </div>
+        <div>
+          <span className="field-label">
+            Channels <span className="optional">none = all</span>
+          </span>
+          <Checks options={CHANNELS} value={channels} onChange={setChannels} />
+        </div>
+      </div>
+
+      <div className="form-actions">
+        <button type="button" className="btn ghost" onClick={onCancel}>
+          Cancel
+        </button>
+        <button type="submit" className="btn primary" disabled={busy || !ready}>
+          Add rule
+        </button>
+      </div>
+    </form>
   )
 }

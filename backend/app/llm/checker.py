@@ -92,8 +92,8 @@ class LLMUnavailable(Exception):
     """The model call failed or returned something unusable. Code checks still stand."""
 
 
-def applicable_rules(asset: Asset) -> list[JudgmentRule]:
-    return [r for r in JUDGMENT_RULES if r.enabled and r.applies_to(asset)]
+def applicable_rules(asset: Asset, rules: list[JudgmentRule] = JUDGMENT_RULES) -> list[JudgmentRule]:
+    return [r for r in rules if r.enabled and r.applies_to(asset)]
 
 
 def cache_key(asset: Asset, rules: list[JudgmentRule]) -> str:

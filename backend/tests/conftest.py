@@ -11,15 +11,17 @@ from sqlalchemy import text  # noqa: E402
 from app.db import engine  # noqa: E402
 from app.llm import checker, store  # noqa: E402
 from app.review import store as review_store  # noqa: E402
+from app.rules import registry  # noqa: E402
 
 store.metadata.create_all(engine)
 review_store.metadata.create_all(engine)
+registry.metadata.create_all(engine)
 
 
 @pytest.fixture(autouse=True)
 def clean_state(monkeypatch):
     with engine.begin() as conn:
-        conn.execute(text("TRUNCATE llm_results, llm_calls, events, flags, asset_versions, assets RESTART IDENTITY"))
+        conn.execute(text("TRUNCATE llm_results, llm_calls, events, flags, asset_versions, assets, custom_rules, rule_settings RESTART IDENTITY"))
 
     def no_real_calls(prompt):
         raise AssertionError("tests must not call the real model; use the fake_model fixture")

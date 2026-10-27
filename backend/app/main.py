@@ -15,12 +15,12 @@ from sqlalchemy import text  # noqa: E402
 from . import analysis  # noqa: E402
 from .db import engine  # noqa: E402
 from .llm import store  # noqa: E402
-from .llm.rules import JUDGMENT_RULES  # noqa: E402
 from .review import api as review_api  # noqa: E402
 from .review import seeds  # noqa: E402
 from .review import store as review_store  # noqa: E402
-from .rules.builtin import BUILTIN_RULES  # noqa: E402
-from .rules.models import Asset, Channel, FlagType, Product  # noqa: E402
+from .rules import api as rules_api  # noqa: E402
+from .rules import registry  # noqa: E402
+from .rules.models import Asset  # noqa: E402
 from .visitors import visitor_id  # noqa: E402
 
 
@@ -30,6 +30,7 @@ async def lifespan(app: FastAPI):
     # switch to migrations (Alembic) once there's data worth preserving across changes.
     store.metadata.create_all(engine)
     review_store.metadata.create_all(engine)
+    registry.metadata.create_all(engine)
     # Seeding runs the AI checks on the demo queue the first time, which takes a minute,
     # so it happens in the background and the app starts serving straight away.
     threading.Thread(target=seeds.seed_if_empty, daemon=True).start()
@@ -38,6 +39,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="ClearPath Compliance Review", lifespan=lifespan)
 app.include_router(review_api.router)
+app.include_router(rules_api.router)
 
 
 @app.get("/api/health")
@@ -70,61 +72,6 @@ def limits(request: Request) -> Limits:
         remaining_this_hour=store.remaining(visitor_id(request)),
         limit_per_hour=store.PER_VISITOR_PER_HOUR,
     )
-
-
-class RuleStats(BaseModel):
-    flagged: int = 0
-    dismissed: int = 0
-    reasons: dict[str, int] = {}
-
-
-class RuleOut(BaseModel):
-    id: str
-    name: str
-    type: FlagType
-    citation: str
-    description: str
-    products: list[Product]
-    channels: list[Channel]
-    enabled: bool
-    source: str
-    stats: RuleStats
-
-
-@app.get("/api/rules")
-def rules() -> list[RuleOut]:
-    stats = review_store.rule_stats()
-    code = [
-        RuleOut(
-            id=r.id,
-            name=r.name,
-            type=r.type,
-            citation=r.citation,
-            description=r.description,
-            products=sorted(r.products),
-            channels=sorted(r.channels),
-            enabled=r.enabled,
-            source=r.source,
-            stats=RuleStats(**stats.get(r.id, {})),
-        )
-        for r in BUILTIN_RULES
-    ]
-    judgment = [
-        RuleOut(
-            id=r.id,
-            name=r.name,
-            type=r.type,
-            citation=r.citation,
-            description=r.instruction,
-            products=sorted(r.products),
-            channels=sorted(r.channels),
-            enabled=r.enabled,
-            source=r.source,
-            stats=RuleStats(**stats.get(r.id, {})),
-        )
-        for r in JUDGMENT_RULES
-    ]
-    return code + judgment
 
 
 # In production FastAPI serves the built React app; in dev, Vite serves it instead.
