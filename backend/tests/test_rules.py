@@ -270,3 +270,47 @@ def test_hidden_tag_text_is_decoded_for_the_reviewer():
 def test_zero_width_characters_have_nothing_to_decode():
     [flag] = flags("Apply\u200b\u200btoday", channel=Channel.AFFILIATE_PAGE, product=CARD)
     assert "hidden text reads" not in flag.why
+
+
+# --- 1026.16(g) promotional card rates -----------------------------------------------------
+
+
+def test_complete_promotional_rate_passes():
+    body = "Enjoy 0% intro APR on purchases for 15 months, then 19.24% to 29.99% variable APR."
+    assert ids(body, CARD) == []
+
+
+def test_promotional_rate_missing_everything_fires():
+    [flag] = flags("0% APR on balance transfers - apply today!", CARD)
+    assert flag.rule_id == "regz-16g-promotional-rate"
+    assert [s.quote for s in flag.spans] == ["0%"]
+    assert '"intro"' in flag.why and "when the promotional rate ends" in flag.why and "after the promotion" in flag.why
+
+
+def test_promotional_rate_without_end_date_fires():
+    [flag] = flags("0% intro APR on purchases, then 21.99% variable APR.", CARD)
+    assert "when the promotional rate ends" in flag.why
+    assert "after the promotion" not in flag.why
+
+
+def test_promotional_rate_without_after_rate_fires():
+    [flag] = flags("0% intro APR on purchases for 12 months.", CARD)
+    assert "after the promotion" in flag.why
+    assert "when the promotional rate ends" not in flag.why
+
+
+def test_non_zero_promotional_rate_counts():
+    [flag] = flags("A special 2.99% APR for 6 months on balance transfers, then 24.99% variable APR.", CARD)
+    assert '"intro"' in flag.why
+
+
+@pytest.mark.parametrize(
+    "body",
+    ["Purchase APR 19.99% to 28.99% variable.", "Earn 5% cash back on groceries."],
+)
+def test_ordinary_card_rates_are_not_promotional(body):
+    assert "regz-16g-promotional-rate" not in ids(body, CARD)
+
+
+def test_promotional_rule_only_applies_to_cards():
+    assert "regz-16g-promotional-rate" not in ids("0% APR for 12 months!", LOAN)

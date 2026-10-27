@@ -43,5 +43,5 @@ def test_rules_lists_code_and_judgment_rules():
     res = client.get("/api/rules")
     assert res.status_code == 200
     types = [r["type"] for r in res.json()]
-    assert types.count("check_failed") == 9
+    assert types.count("check_failed") == 10
     assert types.count("needs_judgment") == 9

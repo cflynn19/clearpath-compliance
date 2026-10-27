@@ -13,6 +13,7 @@ from collections.abc import Iterable
 from .models import Asset, Channel, Finding, FlagType, Product, Rule, Span
 
 CLOSED_END = frozenset({Product.PERSONAL_LOAN, Product.MORTGAGE})
+CARD = frozenset({Product.CREDIT_CARD})
 MORTGAGE = frozenset({Product.MORTGAGE})
 EMAIL = frozenset({Channel.EMAIL})
 
@@ -241,6 +242,76 @@ def opt_out(asset: Asset) -> list[Finding]:
     return [Finding(why="No way to opt out of future marketing email (e.g. an unsubscribe link).")]
 
 
+# --- Reg Z 1026.16(g): promotional rates on credit cards -------------------------------
+
+# A rate that comes after "then" / "after ..." or before "variable APR" is the rate that
+# applies once the promotion ends ("0% intro APR for 15 months, then 19.24% variable APR").
+AFTER_PROMO_BEFORE = re.compile(r"\b(?:then|thereafter|afterwards?|after\b[^.\n]{0,30})[^.\n]{0,15}$", re.I)
+AFTER_PROMO_FOLLOWING = re.compile(r"^[^.\n]{0,25}\b(?:variable|standard|regular|ongoing|go-to)\s?APR", re.I)
+PROMO_DURATION = re.compile(
+    r"\bfor\s(?:the\s)?(?:first\s)?\d{1,2}\s(?:months|billing\scycles)\b"
+    r"|\buntil\s(?:\w+\s){0,3}\d{4}\b"
+    r"|\bthrough\s\w+\s\d{1,2},?\s\d{4}\b",
+    re.I,
+)
+PROMO_WORDS = re.compile(r"\b(?:intro|introductory|promotional|promo|limited[- ]time|special)\b", re.I)
+INTRO = re.compile(r"\bintro(?:ductory)?\b", re.I)
+
+
+def _is_after_promo(text: str, m: re.Match) -> bool:
+    return bool(AFTER_PROMO_BEFORE.search(text[max(0, m.start() - 45) : m.start()])) or bool(
+        AFTER_PROMO_FOLLOWING.match(text[m.end() : m.end() + 40])
+    )
+
+
+def promotional_rate(asset: Asset) -> list[Finding]:
+    """(g)(3): "intro" next to each introductory rate. (g)(4): when it ends and the APR
+    after it, close to the first listing.
+
+    A rate counts as promotional if it's 0%, or a promotion or a time limit is mentioned
+    in the same sentence, and it isn't the rate that applies afterwards.
+    """
+    text = asset.body
+    rates = [m for m in PERCENT.finditer(text) if not NOT_A_RATE.match(text, m.end())]
+    after = [m for m in rates if _is_after_promo(text, m)]
+    promos = [
+        m
+        for m in rates
+        if m not in after
+        and (
+            re.fullmatch(r"0(?:\.0+)?\s?%", m.group())
+            or PROMO_DURATION.search(_sentence_around(text, m.start(), m.end(), 60))
+            or PROMO_WORDS.search(_sentence_around(text, m.start(), m.end(), 60))
+        )
+    ]
+    if not promos:
+        return []
+
+    # DECISION(Q18): card acquisition ads, so every promotional rate is treated as an
+    # "introductory" rate (offered when the account opens) and needs the word "intro".
+    # "Immediate proximity" = within 25 characters, same sentence; "closely proximate" to
+    # the first listing = within 200 characters after it.
+    first = promos[0]
+    near_first = text[max(0, first.start() - 100) : first.end() + 200]
+    missing = []
+    if any(not INTRO.search(_sentence_around(text, m.start(), m.end(), 25)) for m in promos):
+        missing.append('"intro" or "introductory" right next to the rate')
+    if not PROMO_DURATION.search(near_first):
+        missing.append("when the promotional rate ends")
+    if not any(first.start() < m.start() <= first.end() + 200 for m in after):
+        missing.append("the APR that applies after the promotion")
+    if not missing:
+        return []
+
+    spans = _spans(promos)
+    return [
+        Finding(
+            why=f"Advertises a promotional rate ({_quoted(spans)}) without {_join(missing)}.",
+            spans=spans,
+        )
+    ]
+
+
 # --- Security: text aimed at automated review (prompt injection, D12) -----------------
 
 # The LLM has its own injection rule, but text that hijacks the model could also
@@ -361,6 +432,16 @@ BUILTIN_RULES: list[Rule] = [
         "use of \"fixed\".",
         check=fixed_before_arm,
         products=MORTGAGE,
+    ),
+    Rule(
+        id="regz-16g-promotional-rate",
+        name="Promotional rate without required details",
+        type=FlagType.CHECK_FAILED,
+        citation="Reg Z 12 CFR 1026.16(g)(3)-(4)",
+        description="A promotional card rate needs \"intro\" next to it, plus when it ends and the "
+        "APR that applies afterwards, close to the first mention.",
+        check=promotional_rate,
+        products=CARD,
     ),
     Rule(
         id="canspam-address",

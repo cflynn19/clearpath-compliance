@@ -59,6 +59,7 @@ Illustrative, not legal advice.
 | "Fixed" before "ARM" | Reg Z 1026.24(i)(1) | Mortgage | "fixed" and ARM / adjustable / variable both appear, and "ARM" doesn't come first |
 | No physical address | CAN-SPAM | Email | No street address / PO Box pattern |
 | No opt-out | CAN-SPAM | Email | No "unsubscribe" / "opt out" / preferences link |
+| Promotional rate without required details | Reg Z 1026.16(g)(3)-(4) | Credit card | A promotional rate (0%, or a promotion or time limit in the same sentence) without "intro" beside it, when it ends, or the APR afterwards |
 
 **LLM (needs judgment)**
 
@@ -73,9 +74,10 @@ Illustrative, not legal advice.
 | Opt-out unclear, or asks for more than an email / one page | CAN-SPAM | Email |
 | Injection-like text in the asset | (security) | All |
 
-**Known gap:** credit card ads fall under Reg Z §1026.16 (open-end credit), not §1026.24.
-Card-specific rules (e.g. "0% intro APR" needing "introductory", the duration, and the
-rate afterwards) are next; until then, cards get only the channel rules.
+**Credit cards** fall under Reg Z §1026.16 (open-end credit), not §1026.24. v1 covers
+§1026.16(g) promotional rates as a code rule: "intro" next to each introductory rate, plus
+when it ends and the APR afterwards near the first mention. The §1026.16(b) trigger terms
+(fees and charges) are not covered yet.
 
 **Deliberately out of scope**
 

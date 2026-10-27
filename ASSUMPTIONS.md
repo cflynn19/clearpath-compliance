@@ -44,6 +44,7 @@ Confidence: H / M / L. Anything marked **(verify)** I still need to check before
 | A21 | ClearPath is responsible for what affiliates publish on its behalf | FTC CAN-SPAM guide: "you can't contract away your legal responsibility to comply" | | Less weight on affiliate content |
 | A22 | Every ClearPath mortgage is first-lien, so the taxes-and-insurance payment rule (1026.24(f)(3)(i)(C)) always applies | Typical for a mortgage prequalification product | | Make the rule depend on lien position |
 | A23 | ClearPath's "typical marketing channels" are email, social, landing pages, affiliate pages and search ads | The brief names the products but not the channels; these are the common text channels for an online lender | | Add channels (e.g. SMS, which brings in TCPA) |
+| A24 | Credit card ads are acquisition ads, so any promotional rate is an "introductory" rate (offered when the account opens) and needs the word "intro" | Ads market new cards | | Only require "intro" for account-opening offers, e.g. not for balance-transfer promos to existing customers |
 
 ## The demo itself
 
