@@ -26,7 +26,17 @@ export function duration(minutes: number | null): string {
   if (minutes === null) return '–'
   if (minutes < 1) return '<1 min'
   if (minutes < 60) return `${Math.round(minutes)} min`
-  const hours = Math.floor(minutes / 60)
-  const rest = Math.round(minutes % 60)
-  return rest ? `${hours}h ${rest}m` : `${hours}h`
+  if (minutes < 60 * 24) {
+    const hours = Math.floor(minutes / 60)
+    const rest = Math.round(minutes % 60)
+    return rest ? `${hours}h ${rest}m` : `${hours}h`
+  }
+  const days = Math.floor(minutes / (60 * 24))
+  const hours = Math.round((minutes % (60 * 24)) / 60)
+  return hours ? `${days}d ${hours}h` : `${days}d`
+}
+
+/** How long since `iso`, as a duration ("2h 5m"): used for how long an ad has waited. */
+export function waitingSince(iso: string): string {
+  return duration((Date.now() - new Date(iso).getTime()) / 60000)
 }

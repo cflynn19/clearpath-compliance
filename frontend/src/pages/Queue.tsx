@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { CHANNELS, getMetrics, getRules, PRODUCTS, STATUS_LABEL } from '../api'
 import type { AssetStatus, AssetSummary, Channel, Metrics, Product } from '../api'
-import { duration, timeAgo } from '../format'
+import { duration, timeAgo, waitingSince } from '../format'
 import { href } from '../router'
 
 const FILTERS: { key: AssetStatus | 'all'; label: string }[] = [
@@ -60,7 +60,16 @@ export function Queue({ assets, rule }: { assets: AssetSummary[] | null; rule?: 
       (!rule || a.rule_ids.includes(rule)) &&
       (!q || a.title.toLowerCase().includes(q) || a.submitter.toLowerCase().includes(q)),
   )
-  const shown = matching.filter((a) => filter === 'all' || a.status === filter)
+  // A queue is first in, first out: the ad that has waited longest is the most urgent.
+  // Decided ads are history, so the most recent decision comes first.
+  const time = (iso: string | null) => (iso ? new Date(iso).getTime() : 0)
+  const shown = matching
+    .filter((a) => filter === 'all' || a.status === filter)
+    .sort((a, b) => {
+      const [aOpen, bOpen] = [a.status === 'in_review', b.status === 'in_review']
+      if (aOpen !== bOpen) return aOpen ? -1 : 1
+      return aOpen ? time(a.created_at) - time(b.created_at) : time(b.decided_at) - time(a.decided_at)
+    })
   const count = (key: AssetStatus | 'all') => matching.filter((a) => key === 'all' || a.status === key).length
   const filtered = Boolean(product || channel || failedOnly || q)
   const clear = () => {
@@ -175,7 +184,10 @@ export function Queue({ assets, rule }: { assets: AssetSummary[] | null; rule?: 
                     <span className="tag">{PRODUCTS[a.product]}</span>
                     <span className="tag">{CHANNELS[a.channel]}</span>
                     <span className="muted">
-                      {a.submitter} · {timeAgo(a.created_at)}
+                      {a.submitter} ·{' '}
+                      {a.status === 'in_review'
+                        ? `waiting ${waitingSince(a.created_at)}`
+                        : `decided ${timeAgo(a.decided_at ?? a.created_at)}`}
                     </span>
                   </div>
                 </div>
