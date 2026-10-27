@@ -20,6 +20,9 @@ load_dotenv()
 from app import analysis  # noqa: E402
 from app.db import engine  # noqa: E402
 from app.llm import store  # noqa: E402
+from app.llm.rules import JUDGMENT_RULES  # noqa: E402
+from app.rules import registry  # noqa: E402
+from app.rules.builtin import BUILTIN_RULES  # noqa: E402
 
 from .cases import CASES  # noqa: E402
 
@@ -34,6 +37,9 @@ def main() -> None:
     if not args.ai:
         os.environ["ANTHROPIC_API_KEY"] = ""
     store.metadata.create_all(engine)
+    # Score the shipped built-in rules, never whatever custom rules or on/off switches
+    # happen to be in this database, so results don't depend on local test data.
+    registry.load = lambda: (list(BUILTIN_RULES), list(JUDGMENT_RULES))
 
     totals = {t: {"tp": 0, "fn": 0, "fp": 0} for t in TYPES}
     rows = []
