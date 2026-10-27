@@ -21,3 +21,12 @@ export function shortReason(reasons: Record<string, string>, key: string | null)
   if (!key) return ''
   return (reasons[key] ?? key).split(/[:(]/)[0].trim()
 }
+
+export function duration(minutes: number | null): string {
+  if (minutes === null) return '–'
+  if (minutes < 1) return '<1 min'
+  if (minutes < 60) return `${Math.round(minutes)} min`
+  const hours = Math.floor(minutes / 60)
+  const rest = Math.round(minutes % 60)
+  return rest ? `${hours}h ${rest}m` : `${hours}h`
+}

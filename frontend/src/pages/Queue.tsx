@@ -1,7 +1,7 @@
-import { useState } from 'react'
-import { CHANNELS, PRODUCTS, STATUS_LABEL } from '../api'
-import type { AssetStatus, AssetSummary, Channel, Product } from '../api'
-import { timeAgo } from '../format'
+import { useEffect, useState } from 'react'
+import { CHANNELS, getMetrics, PRODUCTS, STATUS_LABEL } from '../api'
+import type { AssetStatus, AssetSummary, Channel, Metrics, Product } from '../api'
+import { duration, timeAgo } from '../format'
 import { href } from '../router'
 
 const FILTERS: { key: AssetStatus | 'all'; label: string }[] = [
@@ -24,8 +24,45 @@ function FlagSummary({ a }: { a: AssetSummary }) {
   )
 }
 
+function MetricsStrip({ m }: { m: Metrics }) {
+  const tiles = [
+    {
+      label: 'Waiting for review',
+      value: String(m.in_review),
+      sub: m.oldest_waiting_minutes === null ? 'queue clear' : `oldest ${duration(m.oldest_waiting_minutes)}`,
+    },
+    { label: 'Median time to decision', value: duration(m.median_decision_minutes), sub: 'submitted → decided' },
+    { label: 'Decided', value: String(m.approved + m.rejected), sub: `${m.approved} approved · ${m.rejected} rejected` },
+    { label: 'Flags per ad', value: m.flags_per_ad === null ? '–' : m.flags_per_ad.toFixed(1), sub: 'code + AI' },
+    {
+      label: 'Flags dismissed',
+      value: m.dismiss_rate === null ? '–' : `${Math.round(m.dismiss_rate * 100)}%`,
+      sub: 'of resolved flags',
+    },
+  ]
+  return (
+    <section className="metrics" aria-label="Throughput">
+      {tiles.map((t) => (
+        <div key={t.label} className="card metric">
+          <span className="metric-label">{t.label}</span>
+          <strong>{t.value}</strong>
+          <span className="metric-sub">{t.sub}</span>
+        </div>
+      ))}
+    </section>
+  )
+}
+
 export function Queue({ assets }: { assets: AssetSummary[] | null }) {
   const [filter, setFilter] = useState<AssetStatus | 'all'>('in_review')
+  const [metrics, setMetrics] = useState<Metrics | null>(null)
+
+  // Refetch whenever the queue changes (a decision, a reset, a new check).
+  useEffect(() => {
+    getMetrics()
+      .then(setMetrics)
+      .catch(() => setMetrics(null))
+  }, [assets])
   const [product, setProduct] = useState<Product | ''>('')
   const [channel, setChannel] = useState<Channel | ''>('')
   const [search, setSearch] = useState('')
@@ -66,6 +103,8 @@ export function Queue({ assets }: { assets: AssetSummary[] | null }) {
           New check
         </a>
       </div>
+
+      {metrics && <MetricsStrip m={metrics} />}
 
       <div className="filters">
         <input

@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app.llm.checker import Finding, ModelOutput, Quote
+from app.llm.checker import ModelOutput, Quote, Verdict
 from app.main import app
 from app.review import seeds
 
@@ -18,7 +18,7 @@ BAD_LOAN = {
 def judged(fake_model):
     """The model flags "Everyone qualifies!" as a misleading claim."""
     fake_model.output = ModelOutput(
-        findings=[Finding(rule_id="llm-udaap-misleading", quotes=[Quote(text="Everyone qualifies!", field="body")], why="Implies guaranteed approval.")]
+        verdicts=[Verdict(violated=True, rule_id="llm-udaap-misleading", quotes=[Quote(text="Everyone qualifies!", field="body")], why="Implies guaranteed approval.")]
     )
     return fake_model
 
@@ -166,3 +166,25 @@ def test_hidden_text_seed_is_caught_by_the_code_backstop(fake_model):
     widget = next(a for a in client.get("/api/assets").json() if a["title"] == "Loan comparison widget")
     detail = client.get(f"/api/assets/{widget['id']}").json()
     assert "security-injection" in [f["rule_id"] for f in detail["flags"]]
+
+
+# --- throughput metrics --------------------------------------------------------------------
+
+
+def test_metrics_start_empty():
+    m = client.get("/api/metrics").json()
+    assert m["in_review"] == 0 and m["median_decision_minutes"] is None and m["dismiss_rate"] is None
+
+
+def test_metrics_track_queue_decisions_and_dismissals(judged):
+    first, second = create(), create({**BAD_LOAN, "body": "Everyone qualifies! Loans at 4.99% interest."})
+    client.post(f"/api/flags/{flag(first, 'regz-24c-rate-as-apr')['id']}/dismiss", json={"reason": "false_positive"})
+    client.post(f"/api/flags/{flag(first, 'llm-udaap-misleading')['id']}/acknowledge")
+    client.post(f"/api/assets/{first['id']}/decision", json={"decision": "approve"})
+
+    m = client.get("/api/metrics").json()
+    assert (m["in_review"], m["approved"], m["rejected"]) == (1, 1, 0)
+    assert m["median_decision_minutes"] >= 0
+    assert m["oldest_waiting_minutes"] >= 0
+    assert m["flags_per_ad"] == 2
+    assert m["dismiss_rate"] == 0.5  # 1 of 2 resolved flags was dismissed

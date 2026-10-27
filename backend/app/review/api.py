@@ -157,6 +157,21 @@ def decide(asset_id: int, body: Decision) -> AssetDetail:
     return _detail(asset_id)
 
 
+class Metrics(BaseModel):
+    in_review: int
+    oldest_waiting_minutes: float | None
+    approved: int
+    rejected: int
+    median_decision_minutes: float | None
+    flags_per_ad: float | None
+    dismiss_rate: float | None
+
+
+@router.get("/metrics")
+def metrics() -> Metrics:
+    return Metrics(**store.metrics())
+
+
 class ReviewConfig(BaseModel):
     actor: str
     dismiss_reasons: dict[str, str]

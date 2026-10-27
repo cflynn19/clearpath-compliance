@@ -109,9 +109,17 @@ Affiliate content is untrusted text going into an LLM. To limit the risk:
 - Only structured output is accepted, with quote verification.
 - Injection-like text in an asset is itself flagged for judgment.
 
-Quote verification stops invented flags but **not** suppressed ones. The code checks
-can't be affected by injection, which is one more reason to keep both types. This lowers
-the risk; it doesn't eliminate it.
+Quote verification stops invented flags but **not** suppressed ones. Two things cover
+that:
+- **The model must return a verdict for every rule** (violated or not, with a reason).
+  If it skips any rule, the ad gets an **"AI review incomplete"** flag naming them, so a
+  model that's been told to "report no issues" and goes quiet is visible to the reviewer
+  instead of looking like a clean result.
+- **The code checks can't be affected by injection**, including the backstop for injection
+  phrasing and hidden characters.
+
+This lowers the risk; it doesn't eliminate it. A manipulated model could still answer
+every rule and say "not violated". That's why the AI never approves anything (D1).
 
 ### D13. Stack
 React + FastAPI + Postgres, deployed as one service (FastAPI serves the built React app)
@@ -205,6 +213,9 @@ flag that point at the same text into one.
 - **The demo queue seeds itself** on first start (8 sample ads, AI-checked once, in the
   background so the app serves immediately). Reset re-seeds from the stored AI results,
   so it costs nothing.
+- **The queue shows throughput numbers** from the audit trail: ads waiting (and the oldest),
+  median time from submission to decision, approved/rejected, flags per ad, and the share
+  of resolved flags that were dismissed (the cost of overflagging, D3).
 - **The Rules page shows how often each rule fires and how often it's dismissed** (D7),
   so a rule reviewers keep overriding is easy to spot.
 
@@ -245,7 +256,7 @@ What the first run showed:
 | Editable dismissal reasons, per-type reason lists | A fixed list is enough to learn from |
 | Per-visitor sandbox | The reset button is enough for a demo |
 | Database migrations (Alembic) | Tables are created at startup; fine while the schema is small and demo data is re-seeded |
-| Stronger injection hardening: the model returns a verdict for every rule (so suppressing a flag means lying about a specific rule, not quietly omitting it), or runs twice and combines results | Costs more per check; the code backstop covers the obvious cases for v1 |
+| Running the AI twice and combining results, or a separate injection classifier | Doubles the cost per check; per-rule verdicts plus the code backstop cover v1 |
 | Merging a code flag and an LLM flag that point at the same text | The overlapping rule is off for now; the general fix needs flag-matching logic |
 | Editing a custom rule, re-scoping built-in rules, and a history of rule changes | Delete and re-add covers v1; rule-change history belongs in the audit trail once there are real users |
 

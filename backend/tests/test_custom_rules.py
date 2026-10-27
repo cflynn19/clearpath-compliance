@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from app.llm.checker import Finding, ModelOutput, Quote
+from app.llm.checker import ModelOutput, Quote, Verdict
 from app.main import app
 from app.review import seeds
 
@@ -46,7 +46,7 @@ def test_plain_english_rule_goes_to_the_model_as_needs_judgment(fake_model):
     assert rule(res.json(), "custom-1")["type"] == "needs_judgment"
 
     fake_model.output = ModelOutput(
-        findings=[Finding(rule_id="custom-1", quotes=[Quote(text="No credit check needed!", field="body")], why="Lifestyle promise.")]
+        verdicts=[Verdict(violated=True, rule_id="custom-1", quotes=[Quote(text="No credit check needed!", field="body")], why="Lifestyle promise.")]
     )
     asset = check()
     assert "custom-1: Implies a loan will improve" in fake_model.prompts[-1]

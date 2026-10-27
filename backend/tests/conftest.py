@@ -1,4 +1,5 @@
 import os
+import re
 
 # Before the app is imported: a separate database, and a fake key so a real model call
 # could never succeed. load_dotenv() doesn't override variables that are already set.
@@ -31,17 +32,32 @@ def clean_state(monkeypatch):
 
 @pytest.fixture
 def fake_model(monkeypatch):
-    """Replace the model with a stub. Set `.output` to what it should return."""
+    """Replace the model with a stub. Set `.output` to the verdicts it should return.
+
+    Like the real model is told to, it answers every rule in the prompt: rules missing
+    from `.output` get a "not violated" verdict. Set `.complete = False` to make it skip
+    them instead, the way a manipulated model might.
+    """
 
     class Fake:
-        output = checker.ModelOutput(findings=[])
+        output = checker.ModelOutput(verdicts=[])
+        complete = True
         prompts: list[str] = []
 
         def __call__(self, prompt):
             self.prompts.append(prompt)
             if isinstance(self.output, Exception):
                 raise self.output
-            return self.output
+            if not self.complete:
+                return self.output
+            given = re.findall(r"^- ([a-z0-9-]+): ", prompt, re.M)
+            answered = {v.rule_id for v in self.output.verdicts}
+            filler = [
+                checker.Verdict(rule_id=r, violated=False, quotes=[], why="Not violated.")
+                for r in given
+                if r not in answered
+            ]
+            return checker.ModelOutput(verdicts=[*self.output.verdicts, *filler])
 
     fake = Fake()
     fake.prompts = []

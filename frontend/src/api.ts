@@ -172,6 +172,16 @@ export const createRule = (rule: NewRule) => request<Rule[]>('/api/rules', post(
 export const toggleRule = (id: string, enabled: boolean) =>
   request<Rule[]>(`/api/rules/${id}`, { ...post({ enabled }), method: 'PATCH' })
 export const deleteRule = (id: string) => request<Rule[]>(`/api/rules/${id}`, { method: 'DELETE' })
+export interface Metrics {
+  in_review: number
+  oldest_waiting_minutes: number | null
+  approved: number
+  rejected: number
+  median_decision_minutes: number | null
+  flags_per_ad: number | null
+  dismiss_rate: number | null
+}
+export const getMetrics = () => request<Metrics>('/api/metrics')
 export const getReviewConfig = () => request<ReviewConfig>('/api/review-config')
 export const resetDemo = () => request<{ seeded: number }>('/api/demo/reset', post())
 

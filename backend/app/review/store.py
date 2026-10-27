@@ -1,6 +1,7 @@
 """Queue items, their flags, reviewer actions and the audit trail (D5, D6, D7, D9)."""
 
 from datetime import datetime, timezone
+from statistics import median
 
 from sqlalchemy import (
     JSON,
@@ -340,3 +341,30 @@ def clear() -> None:
     """Delete every queue item and its history. Stored LLM results are kept, so re-seeding is free."""
     with engine.begin() as conn:
         conn.execute(text("TRUNCATE events, flags, asset_versions, assets RESTART IDENTITY"))
+
+
+def metrics() -> dict:
+    """Throughput numbers, straight from the queue and its audit trail.
+
+    The same timestamps a regulator would ask about are what measure the team's speed:
+    the audit trail doubles as the measurement.
+    """
+    now = _now()
+    with engine.connect() as conn:
+        rows = conn.execute(select(assets.c.status, assets.c.created_at, assets.c.decided_at)).all()
+        flag_rows = conn.execute(select(flags.c.status)).all()
+    waiting = [r for r in rows if r.status == "in_review"]
+    decided = [r for r in rows if r.status != "in_review" and r.decided_at]
+    minutes = [(r.decided_at - r.created_at).total_seconds() / 60 for r in decided]
+    resolved = [f for f in flag_rows if f.status != "open"]
+    return {
+        "in_review": len(waiting),
+        "oldest_waiting_minutes": max(((now - r.created_at).total_seconds() / 60 for r in waiting), default=None),
+        "approved": sum(r.status == "approved" for r in decided),
+        "rejected": sum(r.status == "rejected" for r in decided),
+        "median_decision_minutes": median(minutes) if minutes else None,
+        "flags_per_ad": len(flag_rows) / len(rows) if rows else None,
+        # Of the flags reviewers have resolved, how many they threw out: the cost of
+        # overflagging (D3), and the number to watch when tuning rules.
+        "dismiss_rate": sum(f.status == "dismissed" for f in resolved) / len(resolved) if resolved else None,
+    }
