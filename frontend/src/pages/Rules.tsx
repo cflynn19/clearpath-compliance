@@ -1,20 +1,20 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { CHANNELS, createRule, deleteRule, getRules, PRODUCTS, toggleRule } from '../api'
-import type { Channel, FlagType, NewRule, Product, ReviewConfig, Rule } from '../api'
-import { shortReason } from '../format'
+import { CHANNELS, createRule, deleteRule, getRuleHistory, getRules, PRODUCTS, toggleRule } from '../api'
+import type { Channel, FlagType, NewRule, Product, ReviewConfig, Rule, RuleEvent } from '../api'
+import { clockTime, shortReason, timeAgo } from '../format'
+import { SwitchOffConfirm } from '../SwitchOff'
 
 const SECTIONS: { type: FlagType; title: string; blurb: string }[] = [
   {
     type: 'check_failed',
     title: 'Code checks',
-    blurb: 'Definite, yes/no rules. Free, instant and consistent: the same ad always gets the same result.',
+    blurb: 'Yes/no and consistent: the same ad always gets the same result.',
   },
   {
     type: 'needs_judgment',
     title: 'AI judgment checks',
-    blurb:
-      'Rules about meaning and context. The AI must quote the exact text it flags; anything it cannot quote is discarded.',
+    blurb: 'Meaning and context, backed by an exact quote from the ad.',
   },
 ]
 
@@ -39,21 +39,31 @@ function Stats({ rule, reasons }: { rule: Rule; reasons: Record<string, string> 
   )
 }
 
-export function Rules({ config }: { config: ReviewConfig | null }) {
+export function Rules({ config, focus }: { config: ReviewConfig | null; focus?: string }) {
   const [rules, setRules] = useState<Rule[] | null>(null)
+  const [history, setHistory] = useState<RuleEvent[]>([])
+  const [confirming, setConfirming] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     getRules().then(setRules).catch(() => setRules([]))
+    getRuleHistory().then(setHistory).catch(() => setHistory([]))
   }, [])
+
+  // Arriving from Insights' "View rule": bring that rule into view.
+  useEffect(() => {
+    if (rules && focus) document.getElementById(`rule-${focus}`)?.scrollIntoView({ block: 'center' })
+  }, [rules, focus])
 
   async function act(fn: () => Promise<Rule[]>) {
     setBusy(true)
     setError(null)
     try {
       setRules(await fn())
+      setConfirming(null)
+      getRuleHistory().then(setHistory).catch(() => undefined)
       return true
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -71,11 +81,7 @@ export function Rules({ config }: { config: ReviewConfig | null }) {
       <div className="page-head">
         <div>
           <h1>Rules</h1>
-          <p className="muted">
-            What every ad is checked against, and why. Switch rules off, or add ClearPath's own. Changes apply to new
-            checks; flags already raised keep the rule they were checked with. A rule reviewers dismiss most of the
-            time is one worth fixing.
-          </p>
+          <p className="muted">What every ad is checked against. Changes apply to new checks only.</p>
         </div>
         {!adding && (
           <button className="btn primary" onClick={() => setAdding(true)}>
@@ -105,7 +111,11 @@ export function Rules({ config }: { config: ReviewConfig | null }) {
             {rules
               .filter((r) => r.type === s.type)
               .map((r) => (
-                <div key={r.id} className={`card rule${r.enabled ? '' : ' off'}`}>
+                <div
+                  key={r.id}
+                  id={`rule-${r.id}`}
+                  className={`card rule${r.enabled ? '' : ' off'}${focus === r.id ? ' focused' : ''}`}
+                >
                   <div className="rule-head">
                     <strong>
                       {r.name} {r.source === 'custom' && <span className="chip custom">Custom</span>}
@@ -115,13 +125,25 @@ export function Rules({ config }: { config: ReviewConfig | null }) {
                         type="checkbox"
                         checked={r.enabled}
                         disabled={busy}
-                        onChange={(e) => act(() => toggleRule(r.id, e.target.checked))}
+                        onChange={(e) =>
+                          // Switching on is safe; switching off asks first and records why.
+                          e.target.checked ? act(() => toggleRule(r.id, true)) : setConfirming(r.id)
+                        }
                       />
                       <span>{r.enabled ? 'On' : 'Off'}</span>
                     </label>
                   </div>
                   <span className="cite">{r.citation}</span>
                   <p>{r.description}</p>
+                  {confirming === r.id && (
+                    <SwitchOffConfirm
+                      name={r.name}
+                      builtin={r.source === 'builtin'}
+                      busy={busy}
+                      onCancel={() => setConfirming(null)}
+                      onConfirm={(note) => act(() => toggleRule(r.id, false, note))}
+                    />
+                  )}
                   <div className="rule-foot">
                     <span className="muted small">{scope(r)}</span>
                     <Stats rule={r} reasons={reasons} />
@@ -136,8 +158,37 @@ export function Rules({ config }: { config: ReviewConfig | null }) {
           </div>
         </section>
       ))}
+
+      <section className="rule-section">
+        <h2>Change history</h2>
+        <div className="card activity">
+          {history.length === 0 ? (
+            <p className="muted small">No changes since the last reset.</p>
+          ) : (
+            <ol>
+              {history.map((e) => (
+                <li key={e.id}>
+                  <span className={`dot dot-rule-${e.action}`} />
+                  <div>
+                    <strong>{e.actor}</strong> {HISTORY_TEXT[e.action]} “{e.rule_name}”
+                    {e.note && <>: “{e.note}”</>}
+                    <time title={clockTime(e.created_at)}>{timeAgo(e.created_at)}</time>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      </section>
     </>
   )
+}
+
+const HISTORY_TEXT: Record<RuleEvent['action'], string> = {
+  switched_on: 'switched on',
+  switched_off: 'switched off',
+  created: 'added',
+  deleted: 'deleted',
 }
 
 function Checks<T extends string>({

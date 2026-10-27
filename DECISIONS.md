@@ -79,6 +79,10 @@ positive" means the rule itself needs fixing.
   anyone. Rules are capped at 500 characters, and the usual safeguards still hold (the
   model can only return flags, quotes are verified, code checks run regardless). On a real
   deployment, writing rules would sit behind a permission.
+- **Every rule change is on the record:** switched on or off, added, deleted, with who,
+  when, and (for switching off) why. "Who switched off the APR rule, and when" is one of
+  the first things an examiner would ask. Switching a rule off asks for confirmation, more
+  firmly for a built-in regulatory rule.
 - **Reset demo restores the default rules,** so one visitor can't switch everything off
   for the next.
 
@@ -213,9 +217,28 @@ flag that point at the same text into one.
 - **The demo queue seeds itself** on first start (8 sample ads, AI-checked once, in the
   background so the app serves immediately). Reset re-seeds from the stored AI results,
   so it costs nothing.
-- **The queue shows throughput numbers** from the audit trail: ads waiting (and the oldest),
-  median time from submission to decision, approved/rejected, flags per ad, and the share
-  of resolved flags that were dismissed (the cost of overflagging, D3).
+- **Throughput numbers live on their own Insights page,** because reviewers and leads need
+  different things: a reviewer needs the queue; a lead needs "are we keeping up, and are
+  the rules any good". The queue keeps one line (ads waiting, the oldest, a link).
+  Insights shows, for the last 24 hours, 7 days or all time: ads waiting, median time
+  from submission to decision, approved/rejected, flags per ad, the share of resolved
+  flags that were dismissed (the cost of overflagging, D3), and the rules reviewers
+  override most. All of it comes from the audit trail.
+- **Rule health is a sortable table of every rule that fired:** type, flagged, dismissed,
+  dismiss rate and top dismissal reason. Click a column to sort (numbers high-to-low
+  first), again to reverse, a third time to go back to the default ranking (rules with
+  enough flags first, then most dismissed). The top reason says what to do: "false
+  positive" means the rule may be too broad; "met elsewhere" means it can't see the linked
+  page, which isn't a rule problem; "approved exception" is a question for legal. Rules
+  with fewer than 3 flags show "too few to tell": a 100% rate on one flag is noise.
+- **Row actions sit in a labelled ⋯ menu** (view flagged ads, view rule, switch off,
+  delete a custom rule), with the destructive ones separated. The rule name links
+  straight to its flagged ads, because looking at the ads comes before acting: a rule can
+  be right even when reviewers dismiss it.
+- **Team-wide on purpose.** The brief is about the team's throughput. Per-reviewer speed
+  would push people to rush reviews; if leads need per-person numbers later, the framing
+  is workload balancing ("who has the most waiting"). With logins, Insights would be
+  lead-only.
 - **The Rules page shows how often each rule fires and how often it's dismissed** (D7),
   so a rule reviewers keep overriding is easy to spot.
 

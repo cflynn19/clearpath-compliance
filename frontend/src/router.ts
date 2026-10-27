@@ -1,18 +1,22 @@
 import { useEffect, useState } from 'react'
 
-// A tiny hash router: four pages don't need a routing library.
+// A tiny hash router: a handful of pages don't need a routing library.
 export type Route =
-  | { page: 'queue' }
+  | { page: 'queue'; rule?: string }
   | { page: 'review'; id: number }
   | { page: 'new' }
-  | { page: 'rules' }
+  | { page: 'rules'; focus?: string }
+  | { page: 'insights' }
 
 export function parseRoute(hash: string): Route {
-  const [page, id] = hash.replace(/^#\/?/, '').split('/')
+  const [path, query = ''] = hash.replace(/^#\/?/, '').split('?')
+  const params = new URLSearchParams(query)
+  const [page, id] = path.split('/')
   if (page === 'review' && Number(id)) return { page: 'review', id: Number(id) }
   if (page === 'new') return { page: 'new' }
-  if (page === 'rules') return { page: 'rules' }
-  return { page: 'queue' }
+  if (page === 'rules') return { page: 'rules', focus: params.get('focus') ?? undefined }
+  if (page === 'insights') return { page: 'insights' }
+  return { page: 'queue', rule: params.get('rule') ?? undefined }
 }
 
 export function useRoute(): Route {
@@ -30,7 +34,10 @@ export function useRoute(): Route {
 
 export const href = {
   queue: '#/queue',
+  queueForRule: (ruleId: string) => `#/queue?rule=${encodeURIComponent(ruleId)}`,
   review: (id: number) => `#/review/${id}`,
   new: '#/new',
   rules: '#/rules',
+  rule: (ruleId: string) => `#/rules?focus=${encodeURIComponent(ruleId)}`,
+  insights: '#/insights',
 }

@@ -22,7 +22,7 @@ registry.metadata.create_all(engine)
 @pytest.fixture(autouse=True)
 def clean_state(monkeypatch):
     with engine.begin() as conn:
-        conn.execute(text("TRUNCATE llm_results, llm_calls, events, flags, asset_versions, assets, custom_rules, rule_settings RESTART IDENTITY"))
+        conn.execute(text("TRUNCATE llm_results, llm_calls, events, flags, asset_versions, assets, custom_rules, rule_settings, rule_events RESTART IDENTITY"))
 
     def no_real_calls(prompt):
         raise AssertionError("tests must not call the real model; use the fake_model fixture")

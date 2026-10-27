@@ -110,6 +110,7 @@ export interface AssetSummary {
   open_failed: number
   open_judgment: number
   total: number
+  rule_ids: string[]
 }
 
 export interface AssetDetail extends Omit<AssetSummary, 'open_failed' | 'open_judgment' | 'total'> {
@@ -141,6 +142,7 @@ export interface Rule {
 export interface ReviewConfig {
   actor: string
   dismiss_reasons: Record<string, string>
+  min_sample: number
 }
 
 const post = (body?: unknown): RequestInit => ({
@@ -169,19 +171,41 @@ export interface NewRule {
   channels: Channel[]
 }
 export const createRule = (rule: NewRule) => request<Rule[]>('/api/rules', post(rule))
-export const toggleRule = (id: string, enabled: boolean) =>
-  request<Rule[]>(`/api/rules/${id}`, { ...post({ enabled }), method: 'PATCH' })
+export const toggleRule = (id: string, enabled: boolean, note = '') =>
+  request<Rule[]>(`/api/rules/${id}`, { ...post({ enabled, note }), method: 'PATCH' })
+
+export interface RuleEvent {
+  id: number
+  rule_id: string
+  rule_name: string
+  actor: string
+  action: 'switched_on' | 'switched_off' | 'created' | 'deleted'
+  note: string | null
+  created_at: string
+}
+export const getRuleHistory = () => request<RuleEvent[]>('/api/rules/history')
 export const deleteRule = (id: string) => request<Rule[]>(`/api/rules/${id}`, { method: 'DELETE' })
+export interface RuleHealth {
+  rule_id: string
+  rule_name: string
+  type: FlagType
+  flagged: number
+  dismissed: number
+  top_reason: string | null
+}
+
 export interface Metrics {
   in_review: number
   oldest_waiting_minutes: number | null
+  submitted: number
   approved: number
   rejected: number
   median_decision_minutes: number | null
   flags_per_ad: number | null
   dismiss_rate: number | null
+  rule_health: RuleHealth[]
 }
-export const getMetrics = () => request<Metrics>('/api/metrics')
+export const getMetrics = (days?: number) => request<Metrics>(days ? `/api/metrics?days=${days}` : '/api/metrics')
 export const getReviewConfig = () => request<ReviewConfig>('/api/review-config')
 export const resetDemo = () => request<{ seeded: number }>('/api/demo/reset', post())
 

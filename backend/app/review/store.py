@@ -192,6 +192,7 @@ def _open_counts():
             func.count(flags.c.id).filter(flags.c.type == "check_failed", flags.c.status == "open").label("open_failed"),
             func.count(flags.c.id).filter(flags.c.type == "needs_judgment", flags.c.status == "open").label("open_judgment"),
             func.count(flags.c.id).label("total"),
+            func.array_remove(func.array_agg(func.distinct(flags.c.rule_id)), None).label("rule_ids"),
         )
         .select_from(latest.outerjoin(flags, flags.c.version_id == latest.c.version_id))
         .group_by(latest.c.asset_id)
@@ -202,7 +203,7 @@ def _open_counts():
 def list_assets() -> list[dict]:
     counts = _open_counts()
     query = (
-        select(assets, counts.c.open_failed, counts.c.open_judgment, counts.c.total)
+        select(assets, counts.c.open_failed, counts.c.open_judgment, counts.c.total, counts.c.rule_ids)
         .select_from(assets.join(counts, counts.c.asset_id == assets.c.id))
         .order_by((assets.c.status == "in_review").desc(), assets.c.created_at.desc())
     )
@@ -343,28 +344,66 @@ def clear() -> None:
         conn.execute(text("TRUNCATE events, flags, asset_versions, assets RESTART IDENTITY"))
 
 
-def metrics() -> dict:
+# Below this many flags, a dismissal rate is noise, not a signal about the rule.
+MIN_SAMPLE = 3
+
+
+def metrics(since: datetime | None = None) -> dict:
     """Throughput numbers, straight from the queue and its audit trail.
 
     The same timestamps a regulator would ask about are what measure the team's speed:
-    the audit trail doubles as the measurement.
+    the audit trail doubles as the measurement. `since` limits everything except the
+    current backlog to ads submitted (or decided) after that time.
     """
     now = _now()
     with engine.connect() as conn:
         rows = conn.execute(select(assets.c.status, assets.c.created_at, assets.c.decided_at)).all()
-        flag_rows = conn.execute(select(flags.c.status)).all()
+        flag_rows = conn.execute(
+            select(
+                flags.c.rule_id, flags.c.rule_name, flags.c.type, flags.c.status, flags.c.reason, assets.c.created_at
+            ).select_from(
+                flags.join(versions).join(assets)
+            )
+        ).all()
+
     waiting = [r for r in rows if r.status == "in_review"]
-    decided = [r for r in rows if r.status != "in_review" and r.decided_at]
+    submitted = [r for r in rows if since is None or r.created_at >= since]
+    decided = [r for r in rows if r.decided_at and (since is None or r.decided_at >= since)]
     minutes = [(r.decided_at - r.created_at).total_seconds() / 60 for r in decided]
-    resolved = [f for f in flag_rows if f.status != "open"]
+    in_range = [f for f in flag_rows if since is None or f.created_at >= since]
+    resolved = [f for f in in_range if f.status != "open"]
+
+    by_rule: dict[str, dict] = {}
+    for f in in_range:
+        r = by_rule.setdefault(
+            f.rule_id,
+            {"rule_id": f.rule_id, "rule_name": f.rule_name, "type": f.type, "flagged": 0, "dismissed": 0, "reasons": {}},
+        )
+        r["flagged"] += 1
+        if f.status == "dismissed":
+            r["dismissed"] += 1
+            r["reasons"][f.reason] = r["reasons"].get(f.reason, 0) + 1
+    for r in by_rule.values():
+        # The most common reason says what to do about the rule (DECISIONS D17).
+        r["top_reason"] = max(r.pop("reasons").items(), key=lambda kv: kv[1])[0] if r["dismissed"] else None
+    # Every rule that fired. Default order: rules with enough flags to judge first, then the
+    # ones reviewers dismiss most, so the top of the list is "most overridden".
+    health = sorted(
+        by_rule.values(),
+        key=lambda r: (r["flagged"] >= MIN_SAMPLE, r["dismissed"] / r["flagged"], r["dismissed"], r["flagged"]),
+        reverse=True,
+    )
+
     return {
         "in_review": len(waiting),
         "oldest_waiting_minutes": max(((now - r.created_at).total_seconds() / 60 for r in waiting), default=None),
+        "submitted": len(submitted),
         "approved": sum(r.status == "approved" for r in decided),
         "rejected": sum(r.status == "rejected" for r in decided),
         "median_decision_minutes": median(minutes) if minutes else None,
-        "flags_per_ad": len(flag_rows) / len(rows) if rows else None,
+        "flags_per_ad": len(in_range) / len(submitted) if submitted else None,
         # Of the flags reviewers have resolved, how many they threw out: the cost of
         # overflagging (D3), and the number to watch when tuning rules.
         "dismiss_rate": sum(f.status == "dismissed" for f in resolved) / len(resolved) if resolved else None,
+        "rule_health": health,
     }

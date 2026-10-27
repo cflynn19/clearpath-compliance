@@ -188,3 +188,67 @@ def test_metrics_track_queue_decisions_and_dismissals(judged):
     assert m["oldest_waiting_minutes"] >= 0
     assert m["flags_per_ad"] == 2
     assert m["dismiss_rate"] == 0.5  # 1 of 2 resolved flags was dismissed
+
+
+def test_rule_health_lists_every_rule_that_fired(judged):
+    asset = create()
+    client.post(f"/api/flags/{flag(asset, 'regz-24c-rate-as-apr')['id']}/dismiss", json={"reason": "false_positive"})
+    health = client.get("/api/metrics").json()["rule_health"]
+    assert health == [
+        {
+            "rule_id": "regz-24c-rate-as-apr",
+            "rule_name": "Rate not stated as APR",
+            "type": "check_failed",
+            "flagged": 1,
+            "dismissed": 1,
+            "top_reason": "false_positive",
+        },
+        {
+            "rule_id": "llm-udaap-misleading",
+            "rule_name": "Misleading or deceptive claim",
+            "type": "needs_judgment",
+            "flagged": 1,
+            "dismissed": 0,
+            "top_reason": None,
+        },
+    ]
+
+
+def test_metrics_time_range_excludes_older_ads(judged):
+    from datetime import datetime, timedelta, timezone
+
+    from app.review import store as review_store
+    from app.rules.models import Asset
+
+    old = Asset(body="Loans at 6.99% interest.", product="personal_loan", channel="landing_page")
+    review_store.create_asset(
+        title="Old ad", submitter="Archive", asset=old, found=[], ai=_ai(), actor="x",
+        created_at=datetime.now(timezone.utc) - timedelta(days=10),
+    )
+    create()
+    assert client.get("/api/metrics").json()["submitted"] == 2
+    week = client.get("/api/metrics?days=7").json()
+    assert week["submitted"] == 1
+    assert week["in_review"] == 2  # the backlog is always the current one
+
+
+def _ai():
+    from app.analysis import AIStatus
+
+    return AIStatus(status="disabled", message="", remaining_this_hour=0)
+
+
+def test_queue_items_list_the_rules_that_flagged_them(judged):
+    create()
+    [item] = client.get("/api/assets").json()
+    assert sorted(item["rule_ids"]) == ["llm-udaap-misleading", "regz-24c-rate-as-apr"]
+
+
+def test_rules_with_enough_flags_rank_above_small_samples(judged):
+    for i in range(3):
+        create({**BAD_LOAN, "body": f"Everyone qualifies! Loans at {i + 4}.99% interest."})
+    small = create({**BAD_LOAN, "product": "mortgage", "body": "Talk to a counselor today."})
+    client.post(f"/api/flags/{flag(small, 'regz-24i6-counselor')['id']}/dismiss", json={"reason": "false_positive"})
+    order = [r["rule_id"] for r in client.get("/api/metrics").json()["rule_health"]]
+    # The counselor rule is 100% dismissed, but on 1 flag: it ranks below rules with 3+ flags.
+    assert order[-1] == "regz-24i6-counselor"

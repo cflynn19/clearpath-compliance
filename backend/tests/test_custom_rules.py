@@ -95,3 +95,25 @@ def test_reset_restores_default_rules(fake_model):
     rules = client.get("/api/rules").json()
     assert not [r for r in rules if r["source"] == "custom"]
     assert rule(rules, "canspam-address")["enabled"] is True
+
+
+def test_rule_changes_are_logged_with_who_and_why(fake_model):
+    add(name="Temp", kind="phrases", phrases=["act now"])
+    client.patch("/api/rules/regz-24c-rate-as-apr", json={"enabled": False, "note": "Too noisy on search ads"})
+    client.patch("/api/rules/regz-24c-rate-as-apr", json={"enabled": False})  # no change: not logged
+    client.delete("/api/rules/custom-1")
+    history = client.get("/api/rules/history").json()
+    assert [(e["action"], e["rule_id"]) for e in history] == [
+        ("deleted", "custom-1"),
+        ("switched_off", "regz-24c-rate-as-apr"),
+        ("created", "custom-1"),
+    ]
+    assert history[1]["note"] == "Too noisy on search ads"
+    assert history[1]["rule_name"] == "Rate not stated as APR"
+    assert all(e["actor"] == "Demo reviewer" for e in history)
+
+
+def test_reset_clears_rule_history(fake_model):
+    add(name="Temp", kind="phrases", phrases=["act now"])
+    seeds.reset()
+    assert client.get("/api/rules/history").json() == []

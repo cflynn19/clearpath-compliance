@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { getReviewConfig, listAssets, resetDemo } from './api'
 import type { AssetSummary, ReviewConfig } from './api'
+import { Insights } from './pages/Insights'
 import { NewCheck } from './pages/NewCheck'
 import { Queue } from './pages/Queue'
 import { Review } from './pages/Review'
@@ -62,6 +63,9 @@ function App() {
           <a className={route.page === 'rules' ? 'on' : ''} href={href.rules}>
             Rules
           </a>
+          <a className={route.page === 'insights' ? 'on' : ''} href={href.insights}>
+            Insights
+          </a>
         </nav>
         <div className="who">
           {confirmReset ? (
@@ -87,10 +91,11 @@ function App() {
       </header>
 
       <main className="page">
-        {route.page === 'queue' && <Queue assets={assets} />}
+        {route.page === 'queue' && <Queue key={route.rule ?? ''} assets={assets} rule={route.rule} />}
         {route.page === 'review' && config && <Review key={route.id} id={route.id} config={config} onChange={refresh} />}
         {route.page === 'new' && <NewCheck />}
-        {route.page === 'rules' && <Rules config={config} />}
+        {route.page === 'rules' && <Rules config={config} focus={route.focus} />}
+        {route.page === 'insights' && <Insights config={config} />}
       </main>
     </>
   )

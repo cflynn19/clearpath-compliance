@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException
@@ -41,6 +42,17 @@ class NewRule(BaseModel):
 
 class Toggle(BaseModel):
     enabled: bool
+    note: str | None = Field(default=None, max_length=500)
+
+
+class RuleEvent(BaseModel):
+    id: int
+    rule_id: str
+    rule_name: str
+    actor: str
+    action: Literal["switched_on", "switched_off", "created", "deleted"]
+    note: str | None
+    created_at: datetime
 
 
 def _guard(fn, *args, **kwargs):
@@ -86,13 +98,18 @@ def create_rule(new: NewRule) -> list[RuleOut]:
     return list_rules()
 
 
+@router.get("/history")
+def rule_history() -> list[RuleEvent]:
+    return [RuleEvent.model_validate(e) for e in registry.history()]
+
+
 @router.patch("/{rule_id}")
 def toggle_rule(rule_id: str, body: Toggle) -> list[RuleOut]:
-    _guard(registry.set_enabled, rule_id, body.enabled)
+    _guard(registry.set_enabled, rule_id, body.enabled, ACTOR, body.note)
     return list_rules()
 
 
 @router.delete("/{rule_id}")
 def delete_rule(rule_id: str) -> list[RuleOut]:
-    _guard(registry.delete_custom, rule_id)
+    _guard(registry.delete_custom, rule_id, ACTOR)
     return list_rules()

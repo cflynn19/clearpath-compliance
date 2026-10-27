@@ -43,6 +43,20 @@ custom_rules = Table(
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
+# Append-only history of rule changes. "Who switched off the APR rule, and when" is one
+# of the first things an examiner would ask, so it's recorded like any review action (D9).
+rule_events = Table(
+    "rule_events",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("rule_id", String(64), nullable=False, index=True),
+    Column("rule_name", Text, nullable=False),
+    Column("actor", Text, nullable=False),
+    Column("action", String(16), nullable=False),  # switched_on | switched_off | created | deleted
+    Column("note", Text),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
 CITATION = "ClearPath policy (custom rule)"
 MAX_NAME = 80
 MAX_PHRASES = 30
@@ -122,16 +136,24 @@ def load() -> tuple[list[Rule], list[JudgmentRule]]:
     return code, judgment
 
 
-def set_enabled(rule_id: str, enabled: bool) -> None:
+def _log(conn, rule_id: str, rule_name: str, actor: str, action: str, note: str | None = None) -> None:
+    conn.execute(rule_events.insert().values(rule_id=rule_id, rule_name=rule_name, actor=actor, action=action, note=note))
+
+
+def set_enabled(rule_id: str, enabled: bool, actor: str, note: str | None = None) -> None:
     code, judgment = load()
-    if rule_id not in {r.id for r in code + judgment}:
+    rule = next((r for r in code + judgment if r.id == rule_id), None)
+    if rule is None:
         raise RuleError(404, "Rule not found.")
+    if rule.enabled == enabled:
+        return
     with engine.begin() as conn:
         conn.execute(
             insert(rule_settings)
             .values(rule_id=rule_id, enabled=enabled)
             .on_conflict_do_update(index_elements=["rule_id"], set_={"enabled": enabled})
         )
+        _log(conn, rule_id, rule.name, actor, "switched_on" if enabled else "switched_off", (note or "").strip() or None)
 
 
 def create_custom(
@@ -176,20 +198,34 @@ def create_custom(
             )
             .returning(custom_rules.c.id)
         ).scalar_one()
+        _log(conn, _custom_id(new_id), name, actor, "created")
     return _custom_id(new_id)
 
 
-def delete_custom(rule_id: str) -> None:
+def delete_custom(rule_id: str, actor: str) -> None:
     if not rule_id.startswith("custom-") or not rule_id.removeprefix("custom-").isdigit():
         raise RuleError(422, "Built-in rules can be switched off but not deleted.")
     with engine.begin() as conn:
-        deleted = conn.execute(custom_rules.delete().where(custom_rules.c.id == int(rule_id.removeprefix("custom-"))))
-        if not deleted.rowcount:
+        deleted = conn.execute(
+            custom_rules.delete()
+            .where(custom_rules.c.id == int(rule_id.removeprefix("custom-")))
+            .returning(custom_rules.c.name)
+        ).first()
+        if deleted is None:
             raise RuleError(404, "Rule not found.")
         conn.execute(rule_settings.delete().where(rule_settings.c.rule_id == rule_id))
+        _log(conn, rule_id, deleted.name, actor, "deleted")
+
+
+def history(limit: int = 50) -> list[dict]:
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(rule_events).order_by(rule_events.c.created_at.desc(), rule_events.c.id.desc()).limit(limit)
+        )
+        return [dict(r._mapping) for r in rows]
 
 
 def clear() -> None:
     """Back to the built-in rules, all at their defaults (used by the demo reset)."""
     with engine.begin() as conn:
-        conn.execute(text("TRUNCATE custom_rules, rule_settings RESTART IDENTITY"))
+        conn.execute(text("TRUNCATE custom_rules, rule_settings, rule_events RESTART IDENTITY"))

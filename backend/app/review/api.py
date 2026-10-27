@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from .. import analysis
@@ -59,6 +59,7 @@ class AssetSummary(BaseModel):
     open_failed: int
     open_judgment: int
     total: int
+    rule_ids: list[str]
 
 
 class AssetDetail(BaseModel):
@@ -157,29 +158,43 @@ def decide(asset_id: int, body: Decision) -> AssetDetail:
     return _detail(asset_id)
 
 
+class RuleHealth(BaseModel):
+    rule_id: str
+    rule_name: str
+    type: FlagType
+    flagged: int
+    dismissed: int
+    top_reason: str | None
+
+
 class Metrics(BaseModel):
     in_review: int
     oldest_waiting_minutes: float | None
+    submitted: int
     approved: int
     rejected: int
     median_decision_minutes: float | None
     flags_per_ad: float | None
     dismiss_rate: float | None
+    rule_health: list[RuleHealth]
 
 
 @router.get("/metrics")
-def metrics() -> Metrics:
-    return Metrics(**store.metrics())
+def metrics(days: int | None = Query(default=None, ge=1, le=365)) -> Metrics:
+    """Team-wide numbers. With logins, this would be for leads only."""
+    since = datetime.now(timezone.utc) - timedelta(days=days) if days else None
+    return Metrics(**store.metrics(since))
 
 
 class ReviewConfig(BaseModel):
     actor: str
     dismiss_reasons: dict[str, str]
+    min_sample: int
 
 
 @router.get("/review-config")
 def review_config() -> ReviewConfig:
-    return ReviewConfig(actor=ACTOR, dismiss_reasons=store.DISMISS_REASONS)
+    return ReviewConfig(actor=ACTOR, dismiss_reasons=store.DISMISS_REASONS, min_sample=store.MIN_SAMPLE)
 
 
 @router.post("/demo/reset")

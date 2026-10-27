@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CHANNELS, getMetrics, PRODUCTS, STATUS_LABEL } from '../api'
+import { CHANNELS, getMetrics, getRules, PRODUCTS, STATUS_LABEL } from '../api'
 import type { AssetStatus, AssetSummary, Channel, Metrics, Product } from '../api'
 import { duration, timeAgo } from '../format'
 import { href } from '../router'
@@ -24,38 +24,18 @@ function FlagSummary({ a }: { a: AssetSummary }) {
   )
 }
 
-function MetricsStrip({ m }: { m: Metrics }) {
-  const tiles = [
-    {
-      label: 'Waiting for review',
-      value: String(m.in_review),
-      sub: m.oldest_waiting_minutes === null ? 'queue clear' : `oldest ${duration(m.oldest_waiting_minutes)}`,
-    },
-    { label: 'Median time to decision', value: duration(m.median_decision_minutes), sub: 'submitted → decided' },
-    { label: 'Decided', value: String(m.approved + m.rejected), sub: `${m.approved} approved · ${m.rejected} rejected` },
-    { label: 'Flags per ad', value: m.flags_per_ad === null ? '–' : m.flags_per_ad.toFixed(1), sub: 'code + AI' },
-    {
-      label: 'Flags dismissed',
-      value: m.dismiss_rate === null ? '–' : `${Math.round(m.dismiss_rate * 100)}%`,
-      sub: 'of resolved flags',
-    },
-  ]
-  return (
-    <section className="metrics" aria-label="Throughput">
-      {tiles.map((t) => (
-        <div key={t.label} className="card metric">
-          <span className="metric-label">{t.label}</span>
-          <strong>{t.value}</strong>
-          <span className="metric-sub">{t.sub}</span>
-        </div>
-      ))}
-    </section>
-  )
-}
-
-export function Queue({ assets }: { assets: AssetSummary[] | null }) {
-  const [filter, setFilter] = useState<AssetStatus | 'all'>('in_review')
+export function Queue({ assets, rule }: { assets: AssetSummary[] | null; rule?: string }) {
+  // Arriving from Insights' "View ads", show every status: the point is to see where the rule fired.
+  const [filter, setFilter] = useState<AssetStatus | 'all'>(rule ? 'all' : 'in_review')
+  const [ruleName, setRuleName] = useState<string | null>(null)
   const [metrics, setMetrics] = useState<Metrics | null>(null)
+
+  useEffect(() => {
+    if (!rule) return
+    getRules()
+      .then((rs) => setRuleName(rs.find((r) => r.id === rule)?.name ?? rule))
+      .catch(() => setRuleName(rule))
+  }, [rule])
 
   // Refetch whenever the queue changes (a decision, a reset, a new check).
   useEffect(() => {
@@ -77,6 +57,7 @@ export function Queue({ assets }: { assets: AssetSummary[] | null }) {
       (!product || a.product === product) &&
       (!channel || a.channel === channel) &&
       (!failedOnly || a.open_failed > 0) &&
+      (!rule || a.rule_ids.includes(rule)) &&
       (!q || a.title.toLowerCase().includes(q) || a.submitter.toLowerCase().includes(q)),
   )
   const shown = matching.filter((a) => filter === 'all' || a.status === filter)
@@ -94,17 +75,30 @@ export function Queue({ assets }: { assets: AssetSummary[] | null }) {
       <div className="page-head">
         <div>
           <h1>Review queue</h1>
-          <p className="muted">
-            Marketing waiting for compliance review. Every ad arrives already checked: open one to resolve its flags and
-            make the call.
-          </p>
+          <p className="muted">Every ad arrives already checked. Open one to review it.</p>
         </div>
         <a className="btn primary" href={href.new}>
           New check
         </a>
       </div>
 
-      {metrics && <MetricsStrip m={metrics} />}
+      {metrics && (
+        <p className="backlog">
+          <b>{metrics.in_review} waiting</b>
+          {metrics.oldest_waiting_minutes !== null && <> · oldest {duration(metrics.oldest_waiting_minutes)}</>}
+          {' · '}
+          <a href={href.insights}>Team insights →</a>
+        </p>
+      )}
+
+      {rule && (
+        <p className="rule-filter">
+          Showing ads flagged by <b>{ruleName ?? '…'}</b>
+          <a className="btn small ghost" href={href.queue}>
+            Clear
+          </a>
+        </p>
+      )}
 
       <div className="filters">
         <input
